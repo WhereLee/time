@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.reason.modules.sys.dao.SysParamDao">
+
+	<!-- 可根据自己的需求，是否要使用 -->
+    <resultMap type="com.reason.modules.sys.entity.SysParamEntity" id="sysParamMap">
+        <result property="paramId" column="param_id"/>
+        <result property="paramName" column="param_name"/>
+        <result property="paramKey" column="param_key"/>
+        <result property="paramValue" column="param_value"/>
+        <result property="paramComment" column="param_comment"/>
+        <result property="paramRecycle" column="param_recycle"/>
+        <result property="paramCreatetime" column="param_createtime"/>
+        <result property="paramUpdatetime" column="param_updatetime"/>
+    </resultMap>
+
+
+</mapper>
