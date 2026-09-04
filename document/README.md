@@ -32,7 +32,16 @@
 - fixes/authservice-npe-user-not-found.md
 - fixes/demo-account-hash-source-sync.md
 - fixes/quartz-selectwithlocksql-mysql-dialect.md
+
+### 知识点（面试素材：原理/权衡/边界，一主题一文件）
 - knowledge/mockito-strict-stubs.md
+- knowledge/password-hash-evolution.md
+- knowledge/conditional-update-concurrency.md
+- knowledge/billing-snapshot-invariant.md
+- knowledge/money-storage-integer-fen.md
+- knowledge/state-machine-table-design.md
+- knowledge/delete-strategy-soft-vs-disable.md
+- knowledge/rbac-menu-permission-model.md
 
 ### 待办
 - roadmap/login-attempt-guard-extraction.md
