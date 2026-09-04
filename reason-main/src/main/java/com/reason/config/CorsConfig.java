@@ -8,19 +8,14 @@
 
 package com.reason.config;
 
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.session.data.redis.config.annotation.web.http.EnableRedisHttpSession;
-import org.springframework.session.web.http.CookieSerializer;
-import org.springframework.session.web.http.DefaultCookieSerializer;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
- * 将http session保存在redis中，maxInactiveIntervalInSeconds是设置session保存在redis中的超时时间
+ * 跨域配置（认证体系为 STATELESS token，无需 HttpSession——@EnableRedisHttpSession 已移除）
  */
 @Configuration
-@EnableRedisHttpSession(maxInactiveIntervalInSeconds = 7200)
 public class CorsConfig implements WebMvcConfigurer {
 
     @Override
@@ -30,18 +25,5 @@ public class CorsConfig implements WebMvcConfigurer {
             .allowCredentials(true)
             .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
             .maxAge(3600);
-    }
-
-    /**
-     * 携带cookie跨域
-     * @return
-     */
-    @Bean
-    public CookieSerializer httpSessionIdResolver() {
-        DefaultCookieSerializer cookieSerializer = new DefaultCookieSerializer();
-        // 取消samesite
-        cookieSerializer.setUseHttpOnlyCookie(false);
-        cookieSerializer.setSameSite(null);
-        return cookieSerializer;
     }
 }

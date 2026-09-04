@@ -77,8 +77,9 @@ mybatis-plus:
 reason:
   redis:
     open: true
-  shiro:
-    redis: false
+  security:
+    # 强改密码检查豁免 URI（登录后仍需访问的必需接口；@Value 注入按逗号拆分）
+    change-password-exempt-uris: /api/sys/menu/nav, /api/sys/user/info, /api/sys/logout, /api/sys/user/password
   # APP模块，是通过jwt认证的，如果要使用APP模块，则需要修改【加密秘钥】
   jwt:
     # 加密秘钥

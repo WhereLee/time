@@ -15,6 +15,7 @@ import com.reason.modules.sys.service.AuthService;
 import com.reason.modules.sys.service.SysUserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
@@ -23,9 +24,9 @@ import java.util.*;
 @Slf4j
 @Service
 public class AuthServiceImpl implements AuthService {
-    /** 强改密码检查的豁免接口（导航/用户信息/登出/改密码），与原 OAuth2Realm 保持一致 */
-    private static final Set<String> CHANGE_PASSWORD_EXEMPT_URIS = Set.of(
-            "/api/sys/menu/nav", "/api/sys/user/info", "/api/sys/logout", "/api/sys/user/password");
+    /** 强改密码检查的豁免 URI（登录后仍需访问的必需接口，yml 可配：reason.security.change-password-exempt-uris） */
+    @Value("${reason.security.change-password-exempt-uris}")
+    private List<String> changePasswordExemptUris;
 
     @Autowired
     private SysMenuDao sysMenuDao;
@@ -62,7 +63,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         //口令强制变更（豁免接口除外）
-        if (!CHANGE_PASSWORD_EXEMPT_URIS.contains(uri)) {
+        if (!changePasswordExemptUris.contains(uri)) {
             if (sysUserService.getChangeForce(user) == 3) {
                 throw new RRException("请先变更密码", 888);
             }

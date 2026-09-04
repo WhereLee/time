@@ -10,6 +10,7 @@ package com.reason.common.aspect;
 
 import com.alibaba.fastjson2.JSONObject;
 import com.reason.common.utils.JsonUtil;
+import com.reason.common.utils.SensitiveDataMasker;
 import com.reason.common.annotation.SysLog;
 import com.reason.common.exception.RRException;
 import com.reason.common.utils.StringUtils;
@@ -88,7 +89,7 @@ public class SysLogAspect {
 			sysLog.setLogType(1);//日志类型 1-WEB端 2-APP端
 			sysLog.setLogState(logState);
 			sysLog.setLogMessage(logMessage);
-			sysLog.setLogReturn(JSONObject.toJSONString(logReturn));
+			sysLog.setLogReturn(SensitiveDataMasker.maskJson(JSONObject.toJSONString(logReturn)));
 			sysLog.setLogError(logError);
 			sysLog.setLogDuration(duration);
 			sysLog.setLogCreatetime(beginTime/1000);
@@ -124,10 +125,10 @@ public class SysLogAspect {
 			String methodName = signature.getName();
 			sysLog.setLogMethod(className + "." + methodName + "()");
 
-			//请求的参数
+			//请求的参数（落库前脱敏：密码/token/盐等敏感字段掩码，见 SensitiveDataMasker）（落库前脱敏：密码/token/盐等敏感字段掩码）
 			Object[] args = joinPoint.getArgs();
 			try {
-				String params = JsonUtil.toJsonString(args);
+				String params = SensitiveDataMasker.maskJson(JsonUtil.toJsonString(args));
 				sysLog.setLogParams(params);
 			} catch (Exception e) {}
 

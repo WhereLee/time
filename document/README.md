@@ -15,9 +15,12 @@
 
 - block-records/A1-测试基建与核心单测.md
 - block-records/quartz-starter-migration.md
+- block-records/security-debt-cleanup.md
 - pitfalls/mockito-nested-stubbing.md
 - pitfalls/mock-default-value-by-return-type.md
 - pitfalls/passwordcodec-byte-order.md
+- pitfalls/testresttemplate-contextpath-auto-prefix.md
+- pitfalls/value-yaml-list-binding.md
 - fixes/authservice-npe-user-not-found.md
 - fixes/demo-account-hash-source-sync.md
 - fixes/quartz-selectwithlocksql-mysql-dialect.md

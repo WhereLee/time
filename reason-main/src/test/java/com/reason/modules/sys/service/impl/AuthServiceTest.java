@@ -9,12 +9,14 @@ import com.reason.modules.sys.entity.SysMenuEntity;
 import com.reason.modules.sys.entity.SysUserEntity;
 import com.reason.modules.sys.entity.SysUserTokenEntity;
 import com.reason.modules.sys.service.SysUserService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.util.Set;
@@ -50,6 +52,13 @@ class AuthServiceTest {
 
     @InjectMocks
     private AuthServiceImpl authService;
+
+    @BeforeEach
+    void setUp() {
+        //@Value 注入的豁免 URI 集合（yml: reason.security.change-password-exempt-uris），单测需手动填充
+        ReflectionTestUtils.setField(authService, "changePasswordExemptUris",
+                List.of("/api/sys/menu/nav", "/api/sys/user/info", "/api/sys/logout", "/api/sys/user/password"));
+    }
 
     private SysUserTokenEntity validTokenEntity() {
         SysUserTokenEntity te = mock(SysUserTokenEntity.class);
