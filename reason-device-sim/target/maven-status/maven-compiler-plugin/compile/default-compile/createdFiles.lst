@@ -1,0 +1,12 @@
+com\reason\device\config\DeviceSimProperties$AutoCfg.class
+com\reason\device\controller\DeviceCmdController.class
+com\reason\device\controller\DeviceCmdController$CmdBody.class
+com\reason\device\config\DeviceSimProperties$DeviceCfg.class
+com\reason\device\DeviceSimApplication.class
+com\reason\device\config\DeviceSimProperties.class
+com\reason\device\reporter\ParkingEventReporter.class
+com\reason\device\sim\SimEngine.class
+com\reason\device\sim\SimDeviceRegistry.class
+com\reason\device\model\SimDevice.class
+com\reason\device\sim\Plates.class
+com\reason\device\controller\SimController.class

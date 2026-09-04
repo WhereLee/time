@@ -3,6 +3,7 @@ package com.reason.config;
 import com.reason.common.utils.HttpContextUtils;
 import com.reason.common.utils.JsonUtil;
 import com.reason.common.utils.Result;
+import com.reason.modules.parking.security.DeviceAuthFilter;
 import com.reason.modules.sys.security.AuthTokenFilter;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
@@ -43,11 +44,14 @@ public class SecurityConfig {
             "/sys/init", "/sys/code", "/sys/login", "/sys/auth",
             "/test/**", "/captcha.jpg", "/aaa.txt", "/app/**", "/etc/test/**",
             "/actuator/health", "/actuator/info",
+            //设备接入通道：免管理端 token 认证（安全由 DeviceAuthFilter 令牌校验承担）
+            "/device/**",
             "/error"
     };
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, AuthTokenFilter authTokenFilter) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, AuthTokenFilter authTokenFilter,
+                                                   DeviceAuthFilter deviceAuthFilter) throws Exception {
         http
                 //前后端分离 + 自有 token 体系：关闭 csrf，会话无状态
                 .csrf(AbstractHttpConfigurer::disable)
@@ -60,7 +64,8 @@ public class SecurityConfig {
                         .requestMatchers(ANON_PATHS).permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e.authenticationEntryPoint(restAuthenticationEntryPoint()))
-                .addFilterBefore(authTokenFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(authTokenFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(deviceAuthFilter, AuthTokenFilter.class);
         return http.build();
     }
 

@@ -87,6 +87,11 @@ reason:
     # token有效时长，7天，单位秒
     expire: 604800
     header: token
+  device:
+    # 设备通道访问令牌（/device/** 接口由 DeviceAuthFilter 校验，须与 device-sim 侧一致）
+    access-token: sim-device-token-2026
+    # 设备模拟服务地址（本地双进程联调；云部署改为内网地址）
+    sim-base-url: http://127.0.0.1:8300
 
 jasypt:
   encryptor:

@@ -1,0 +1,45 @@
+server:
+  port: 8300
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: reason-device-sim
+  jackson:
+    default-property-inclusion: non_null
+
+# 健康检查最小暴露（云服务器探活用）
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.reason.device: DEBUG
+
+reason:
+  device-sim:
+    # 设备通道密钥：与 reason-main 侧 reason.device.access-token 保持一致
+    access-token: sim-device-token-2026
+    # reason-main 设备接入服务地址（本地双进程联调；云部署改为内网地址）
+    parking-api-base-url: http://127.0.0.1:8200/api
+    # 模拟设备清单（deviceNo 与绑定车位编号）
+    devices:
+      - deviceNo: DEV-001
+        spaceNo: A-001
+        deviceType: 地锁型
+      - deviceNo: DEV-002
+        spaceNo: A-002
+        deviceType: 升降杆型
+      - deviceNo: DEV-003
+        spaceNo: A-003
+        deviceType: 升降杆型
+    # 自动剧本：true 时按剧本循环上报（演示满停车场动态）；false 时由 /sim/event 手工触发（联调可控）
+    auto:
+      enable: false
+      # 剧本节拍（秒）：入场后停留时长 / 扫描间隔
+      stay-seconds: 15
+      interval-seconds: 3

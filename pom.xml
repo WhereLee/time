@@ -9,6 +9,8 @@
     <version>1.0-SNAPSHOT</version>
     <modules>
         <module>reason-main</module>
+        <!-- device-sim：设备模拟独立小服务（聚合进 reactor 一次构建；其 parent 独立于本 pom——见其 pom 注释） -->
+        <module>reason-device-sim</module>
     </modules>
     <packaging>pom</packaging>
     <description>reason-faster 个人开发框架（Spring Boot 3 现代化改造版）</description>
