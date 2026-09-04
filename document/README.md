@@ -26,12 +26,14 @@
 - block-records/P1-停车域表结构与实体.md
 - block-records/P2-会话状态机与并发正确性.md
 - block-records/P3-出场结算与订单快照.md
+- block-records/P4-管理端HTTP层与权限生效.md
 - pitfalls/mockito-nested-stubbing.md
 - pitfalls/mock-default-value-by-return-type.md
 - pitfalls/passwordcodec-byte-order.md
 - pitfalls/testresttemplate-contextpath-auto-prefix.md
 - pitfalls/value-yaml-list-binding.md
 - pitfalls/mybatis-plus-lambda-cache-unit-test.md
+- pitfalls/mybatis-plus-injectmocks-basemapper-unit-test.md
 - pitfalls/mockito-verify-overloaded-mapper-method.md
 - fixes/authservice-npe-user-not-found.md
 - fixes/demo-account-hash-source-sync.md

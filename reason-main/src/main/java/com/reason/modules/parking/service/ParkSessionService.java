@@ -1,5 +1,8 @@
 package com.reason.modules.parking.service;
 
+import com.reason.common.utils.PageUtils;
+import com.reason.modules.parking.form.ParkSessionForm;
+
 /**
  * 停车会话服务（状态机：进行中 → 已结束 | 已取消，终态不可逆）
  *
@@ -37,4 +40,9 @@ public interface ParkSessionService {
      * @throws com.reason.common.exception.RRException 会话不存在/非进行中（非法迁移）/无启用规则/状态已被并发变更/车位状态异常
      */
     Long exit(Long sessionId);
+
+    /**
+     * 会话分页查询（管理端只读：车牌/车位模糊 + 状态筛选）
+     */
+    PageUtils queryPage(ParkSessionForm form);
 }

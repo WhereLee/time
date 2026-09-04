@@ -4,6 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.reason.common.exception.RRException;
+import com.reason.common.utils.MapUtils;
+import com.reason.common.utils.PageUtils;
+import com.reason.common.utils.Query;
 import com.reason.modules.parking.dao.FeeRuleDao;
 import com.reason.modules.parking.dao.ParkOrderDao;
 import com.reason.modules.parking.dao.ParkSessionDao;
@@ -12,9 +15,11 @@ import com.reason.modules.parking.entity.FeeRuleEntity;
 import com.reason.modules.parking.entity.ParkOrderEntity;
 import com.reason.modules.parking.entity.ParkSessionEntity;
 import com.reason.modules.parking.entity.ParkSpaceEntity;
+import com.reason.common.utils.Constant;
 import com.reason.modules.parking.enums.FeeRuleState;
 import com.reason.modules.parking.enums.ParkSessionState;
 import com.reason.modules.parking.enums.ParkSpaceState;
+import com.reason.modules.parking.form.ParkSessionForm;
 import com.reason.modules.parking.service.FeeCalculator;
 import com.reason.modules.parking.service.ParkSessionService;
 import lombok.extern.slf4j.Slf4j;
@@ -215,6 +220,21 @@ public class ParkSessionServiceImpl extends ServiceImpl<ParkSessionDao, ParkSess
             throw new RRException("车位状态异常，出场失败，请联系管理员：" + sessionId);
         }
         return order.getOrderId();
+    }
+
+    @Override
+    public PageUtils queryPage(ParkSessionForm form) {
+        com.baomidou.mybatisplus.core.metadata.IPage<ParkSessionEntity> page =
+                new Query<ParkSessionEntity>().getPage(new MapUtils()
+                        .put(Constant.PAGE, form.getPage()).put(Constant.LIMIT, form.getLimit()));
+        parkSessionDao.selectPage(page, new LambdaQueryWrapper<ParkSessionEntity>()
+                        .like(org.springframework.util.StringUtils.hasText(form.getSpaceNo()),
+                                ParkSessionEntity::getSpaceNo, form.getSpaceNo())
+                        .like(org.springframework.util.StringUtils.hasText(form.getPlateNo()),
+                                ParkSessionEntity::getPlateNo, form.getPlateNo())
+                        .eq(form.getSessionState() != null, ParkSessionEntity::getSessionState, form.getSessionState())
+                        .orderByDesc(ParkSessionEntity::getSessionId));
+        return new PageUtils(page);
     }
 
     private String normalize(String value, String emptyMsg) {
