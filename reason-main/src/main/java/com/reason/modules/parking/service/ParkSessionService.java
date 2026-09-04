@@ -28,4 +28,13 @@ public interface ParkSessionService {
      * @throws com.reason.common.exception.RRException 会话不存在/非进行中（非法迁移）/状态已被并发变更
      */
     void cancel(Long sessionId, String cancelReason);
+
+    /**
+     * 出场结算：会话终态化 + 算费生成订单快照 + 释放车位（单事务，判官前置）
+     *
+     * @param sessionId 会话 id
+     * @return 订单 id
+     * @throws com.reason.common.exception.RRException 会话不存在/非进行中（非法迁移）/无启用规则/状态已被并发变更/车位状态异常
+     */
+    Long exit(Long sessionId);
 }

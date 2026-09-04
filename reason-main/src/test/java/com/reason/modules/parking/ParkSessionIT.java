@@ -1,8 +1,10 @@
 package com.reason.modules.parking;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.reason.modules.parking.dao.ParkOrderDao;
 import com.reason.modules.parking.dao.ParkSessionDao;
 import com.reason.modules.parking.dao.ParkSpaceDao;
+import com.reason.modules.parking.entity.ParkOrderEntity;
 import com.reason.modules.parking.entity.ParkSessionEntity;
 import com.reason.modules.parking.entity.ParkSpaceEntity;
 import com.reason.modules.parking.enums.ParkSessionState;
@@ -52,6 +54,8 @@ class ParkSessionIT {
     private static final String SPACE_NO_CONCURRENT = "IT-CONCUR";
     /** 生命周期用例车位编号前缀 */
     private static final String SPACE_NO_CYCLE = "IT-CYCLE";
+    /** 出场结算用例车位编号前缀 */
+    private static final String SPACE_NO_SETTLE = "IT-SETTLE";
 
     @Container
     static final MySQLContainer<?> MYSQL = new MySQLContainer<>(DockerImageName.parse("mysql:8.0.36"))
@@ -86,6 +90,8 @@ class ParkSessionIT {
     private ParkSpaceDao parkSpaceDao;
     @Autowired
     private ParkSessionDao parkSessionDao;
+    @Autowired
+    private ParkOrderDao parkOrderDao;
 
     @Test
     @DisplayName("同车位并发入场：仅一个成功（条件更新行锁语义的真库验证）")
@@ -153,6 +159,42 @@ class ParkSessionIT {
         ParkSessionEntity ongoing = parkSessionDao.selectById(second);
         assertThat(ongoing.getSessionState()).isEqualTo(ParkSessionState.ONGOING.getCode());
         assertThat(ongoing.getPlateNo()).isEqualTo("浙B54321");
+    }
+
+    @Test
+    @DisplayName("出场结算：订单生成（65 分钟 → 2 小时 × 200 分）+ 会话终态 + 车位释放 + 可再次入场")
+    void 出场结算生成订单并释放车位() {
+        ParkSpaceEntity space = insertSpace(SPACE_NO_SETTLE);
+
+        Long sessionId = parkSessionService.entry(SPACE_NO_SETTLE, "浙B12345");
+
+        //把入场时间回拨 65 分钟（DB 直改模拟停车时长，真实场景由时间自然流逝）
+        ParkSessionEntity parked = parkSessionDao.selectById(sessionId);
+        parked.setSessionEntryTime(parked.getSessionEntryTime() - 3900);
+        parkSessionDao.updateById(parked);
+
+        Long orderId = parkSessionService.exit(sessionId);
+        assertThat(orderId).isNotNull();
+
+        //订单快照断言（分存储 + 快照字段齐）
+        ParkOrderEntity order = parkOrderDao.selectById(orderId);
+        assertThat(order.getSessionId()).isEqualTo(sessionId);
+        assertThat(order.getPlateNo()).isEqualTo("浙B12345");
+        assertThat(order.getSpaceNo()).isEqualTo(SPACE_NO_SETTLE);
+        assertThat(order.getDurationMinutes()).isEqualTo(65);
+        assertThat(order.getUnitPriceFen()).isEqualTo(200);
+        assertThat(order.getAmountFen()).isEqualTo(400L);   //ceil(3900/3600)=2 小时 × 200 分
+
+        //会话终态 + 车位释放
+        ParkSessionEntity afterExit = parkSessionDao.selectById(sessionId);
+        assertThat(afterExit.getSessionState()).isEqualTo(ParkSessionState.FINISHED.getCode());
+        assertThat(afterExit.getSessionExitTime()).isNotNull();
+        ParkSpaceEntity afterSpace = parkSpaceDao.selectById(space.getSpaceId());
+        assertThat(afterSpace.getSpaceState()).isEqualTo(ParkSpaceState.IDLE.getCode());
+
+        //释放后可再次入场（完整生命周期闭环）
+        Long again = parkSessionService.entry(SPACE_NO_SETTLE, "浙B54321");
+        assertThat(again).isNotNull();
     }
 
     private ParkSpaceEntity insertSpace(String spaceNo) {

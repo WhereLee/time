@@ -4,18 +4,25 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.reason.common.exception.RRException;
+import com.reason.modules.parking.dao.FeeRuleDao;
+import com.reason.modules.parking.dao.ParkOrderDao;
 import com.reason.modules.parking.dao.ParkSessionDao;
 import com.reason.modules.parking.dao.ParkSpaceDao;
+import com.reason.modules.parking.entity.FeeRuleEntity;
+import com.reason.modules.parking.entity.ParkOrderEntity;
 import com.reason.modules.parking.entity.ParkSessionEntity;
 import com.reason.modules.parking.entity.ParkSpaceEntity;
+import com.reason.modules.parking.enums.FeeRuleState;
 import com.reason.modules.parking.enums.ParkSessionState;
 import com.reason.modules.parking.enums.ParkSpaceState;
+import com.reason.modules.parking.service.FeeCalculator;
 import com.reason.modules.parking.service.ParkSessionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -40,6 +47,12 @@ public class ParkSessionServiceImpl extends ServiceImpl<ParkSessionDao, ParkSess
 
     @Autowired
     private ParkSessionDao parkSessionDao;
+
+    @Autowired
+    private FeeRuleDao feeRuleDao;
+
+    @Autowired
+    private ParkOrderDao parkOrderDao;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -135,6 +148,73 @@ public class ParkSessionServiceImpl extends ServiceImpl<ParkSessionDao, ParkSess
             log.error("会话取消时车位释放失败（会话与车位状态不一致）：sessionId={}, spaceId={}", sessionId, session.getSpaceId());
             throw new RRException("车位状态异常，取消失败，请联系管理员：" + sessionId);
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long exit(Long sessionId) {
+        if (sessionId == null) {
+            throw new RRException("会话id不能为空");
+        }
+
+        //1.查会话：不存在直接拒绝
+        ParkSessionEntity session = parkSessionDao.selectById(sessionId);
+        if (session == null) {
+            throw new RRException("停车会话不存在：" + sessionId);
+        }
+
+        //2.守卫（快速失败层）：非法迁移（终态/取消不可出场）语义化拒绝
+        ParkSessionState cur = ParkSessionState.of(session.getSessionState());
+        ParkSessionState.assertCanTransit(cur, ParkSessionState.FINISHED);
+
+        long now = System.currentTimeMillis() / 1000;
+
+        //3.会话终态化（最终判官）：进行中 → 已结束
+        //  并发出场/取消同时读到进行中时仅一方行数>0，另一方收到"状态已变更"而非继续写账
+        int finishRows = parkSessionDao.update(null, new LambdaUpdateWrapper<ParkSessionEntity>()
+                .eq(ParkSessionEntity::getSessionId, sessionId)
+                .eq(ParkSessionEntity::getSessionState, ParkSessionState.ONGOING.getCode())
+                .set(ParkSessionEntity::getSessionState, ParkSessionState.FINISHED.getCode())
+                .set(ParkSessionEntity::getSessionExitTime, now)
+                .set(ParkSessionEntity::getSessionUpdatetime, now));
+        if (finishRows == 0) {
+            throw new RRException("会话状态已变更，请刷新后重试：" + sessionId);
+        }
+
+        //4.读启用规则并生成订单快照（本事务已是会话终态化的唯一胜者）
+        //  启用规则 M0 约定仅一条；selectList 防御而非 selectOne（多条时 selectOne 抛 TooManyResults）
+        List<FeeRuleEntity> enabledRules = feeRuleDao.selectList(new LambdaQueryWrapper<FeeRuleEntity>()
+                .eq(FeeRuleEntity::getRuleState, FeeRuleState.ENABLED.getCode()));
+        if (enabledRules.isEmpty()) {
+            throw new RRException("无启用的计费规则，请联系管理员");
+        }
+        FeeRuleEntity rule = enabledRules.get(0);   //多策略选择（取默认/最优）归 M2 规则引擎
+
+        long durationSeconds = now - session.getSessionEntryTime();
+        ParkOrderEntity order = new ParkOrderEntity();
+        order.setSessionId(sessionId);
+        order.setPlateNo(session.getPlateNo());
+        order.setSpaceNo(session.getSpaceNo());
+        order.setOrderEntryTime(session.getSessionEntryTime());
+        order.setOrderExitTime(now);
+        order.setDurationMinutes(FeeCalculator.calcDurationMinutes(durationSeconds));
+        order.setUnitPriceFen(rule.getUnitPriceFen());
+        order.setAmountFen(FeeCalculator.calcAmountFen(durationSeconds, rule.getUnitPriceFen()));
+        order.setOrderState(0);
+        order.setOrderCreatetime(now);
+        parkOrderDao.insert(order);
+
+        //5.释放车位（条件更新 占用→空闲）；行数 0 = 会话与车位状态不一致 → 回滚暴露
+        int releaseRows = parkSpaceDao.update(null, new LambdaUpdateWrapper<ParkSpaceEntity>()
+                .eq(ParkSpaceEntity::getSpaceId, session.getSpaceId())
+                .eq(ParkSpaceEntity::getSpaceState, ParkSpaceState.OCCUPIED.getCode())
+                .set(ParkSpaceEntity::getSpaceState, ParkSpaceState.IDLE.getCode())
+                .set(ParkSpaceEntity::getSpaceUpdatetime, now));
+        if (releaseRows == 0) {
+            log.error("出场结算时车位释放失败（会话与车位状态不一致）：sessionId={}, spaceId={}", sessionId, session.getSpaceId());
+            throw new RRException("车位状态异常，出场失败，请联系管理员：" + sessionId);
+        }
+        return order.getOrderId();
     }
 
     private String normalize(String value, String emptyMsg) {

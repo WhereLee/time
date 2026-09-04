@@ -3,10 +3,15 @@ package com.reason.modules.parking.service.impl;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.reason.common.exception.RRException;
+import com.reason.modules.parking.dao.FeeRuleDao;
+import com.reason.modules.parking.dao.ParkOrderDao;
 import com.reason.modules.parking.dao.ParkSessionDao;
 import com.reason.modules.parking.dao.ParkSpaceDao;
+import com.reason.modules.parking.entity.FeeRuleEntity;
+import com.reason.modules.parking.entity.ParkOrderEntity;
 import com.reason.modules.parking.entity.ParkSessionEntity;
 import com.reason.modules.parking.entity.ParkSpaceEntity;
+import com.reason.modules.parking.enums.FeeRuleState;
 import com.reason.modules.parking.enums.ParkSessionState;
 import com.reason.modules.parking.enums.ParkSpaceState;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -45,6 +50,10 @@ class ParkSessionServiceImplTest {
     private ParkSpaceDao parkSpaceDao;
     @Mock
     private ParkSessionDao parkSessionDao;
+    @Mock
+    private FeeRuleDao feeRuleDao;
+    @Mock
+    private ParkOrderDao parkOrderDao;
     @InjectMocks
     private ParkSessionServiceImpl parkSessionService;
 
@@ -55,6 +64,8 @@ class ParkSessionServiceImplTest {
         MapperBuilderAssistant assistant = new MapperBuilderAssistant(new MybatisConfiguration(), "");
         TableInfoHelper.initTableInfo(assistant, ParkSpaceEntity.class);
         TableInfoHelper.initTableInfo(assistant, ParkSessionEntity.class);
+        TableInfoHelper.initTableInfo(assistant, FeeRuleEntity.class);
+        TableInfoHelper.initTableInfo(assistant, ParkOrderEntity.class);
     }
 
     // ---------- 入场 ----------
@@ -220,6 +231,112 @@ class ParkSessionServiceImplTest {
                 .hasMessageContaining("会话id");
     }
 
+    // ---------- 出场结算 ----------
+
+    @Test
+    @DisplayName("出场成功：会话终态化 + 订单快照（算费/单价快照/冗余字段）+ 车位释放")
+    void 出场成功() {
+        //入场已 3700 秒（1 小时 1 分 40 秒）→ 时长 62 分钟、按 2 小时计费 400 分
+        when(parkSessionDao.selectById(100L)).thenReturn(sessionParkedSecondsAgo(3700));
+        when(parkSessionDao.update(isNull(), any())).thenReturn(1);
+        when(feeRuleDao.selectList(any())).thenReturn(java.util.List.of(enabledRule(200)));
+        when(parkSpaceDao.update(isNull(), any())).thenReturn(1);
+        doAnswer(inv -> {
+            ParkOrderEntity o = inv.getArgument(0);
+            o.setOrderId(200L);
+            return 1;
+        }).when(parkOrderDao).insert(any(ParkOrderEntity.class));
+
+        Long orderId = parkSessionService.exit(100L);
+
+        assertThat(orderId).isEqualTo(200L);
+        ArgumentCaptor<ParkOrderEntity> captor = ArgumentCaptor.forClass(ParkOrderEntity.class);
+        verify(parkOrderDao).insert(captor.capture());
+        ParkOrderEntity order = captor.getValue();
+        assertThat(order.getSessionId()).isEqualTo(100L);
+        assertThat(order.getPlateNo()).isEqualTo("浙B12345");            //快照自会话
+        assertThat(order.getSpaceNo()).isEqualTo(SPACE_NO);              //快照自会话
+        assertThat(order.getOrderExitTime()).isNotNull();
+        assertThat(order.getDurationMinutes()).isEqualTo(62);            //ceil(3700/60)
+        assertThat(order.getUnitPriceFen()).isEqualTo(200);              //单价快照自规则
+        assertThat(order.getAmountFen()).isEqualTo(400L);                //ceil(3700/3600)=2h × 200
+        assertThat(order.getOrderState()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("出场：会话不存在 → 业务异常")
+    void 出场会话不存在() {
+        when(parkSessionDao.selectById(100L)).thenReturn(null);
+
+        assertThatThrownBy(() -> parkSessionService.exit(100L))
+                .isInstanceOf(RRException.class)
+                .hasMessageContaining("不存在");
+    }
+
+    @Test
+    @DisplayName("出场：已结束会话（终态不可重复出场）→ 守卫拒绝")
+    void 出场已结束拒绝() {
+        when(parkSessionDao.selectById(100L)).thenReturn(sessionWithState(ParkSessionState.FINISHED));
+
+        assertThatThrownBy(() -> parkSessionService.exit(100L))
+                .isInstanceOf(RRException.class)
+                .hasMessageContaining("非法的会话状态迁移");
+        verify(parkSessionDao, never()).update(isNull(), any());
+    }
+
+    @Test
+    @DisplayName("出场：已取消会话（已取消不可结算）→ 守卫拒绝")
+    void 出场已取消拒绝() {
+        when(parkSessionDao.selectById(100L)).thenReturn(sessionWithState(ParkSessionState.CANCELLED));
+
+        assertThatThrownBy(() -> parkSessionService.exit(100L))
+                .isInstanceOf(RRException.class)
+                .hasMessageContaining("非法的会话状态迁移");
+    }
+
+    @Test
+    @DisplayName("出场：会话终态化 0 行（并发下被取消抢先）→ 拒绝且不读规则不写账不释放")
+    void 出场并发被抢先拒绝() {
+        when(parkSessionDao.selectById(100L)).thenReturn(ongoingSession());
+        when(parkSessionDao.update(isNull(), any())).thenReturn(0);
+
+        assertThatThrownBy(() -> parkSessionService.exit(100L))
+                .isInstanceOf(RRException.class)
+                .hasMessageContaining("状态已变更");
+        verify(feeRuleDao, never()).selectList(any());
+        verify(parkSpaceDao, never()).update(isNull(), any());
+    }
+
+    @Test
+    @DisplayName("出场：无启用计费规则 → 业务异常（不生成订单）")
+    void 出场无启用规则() {
+        when(parkSessionDao.selectById(100L)).thenReturn(ongoingSession());
+        when(parkSessionDao.update(isNull(), any())).thenReturn(1);
+        when(feeRuleDao.selectList(any())).thenReturn(java.util.Collections.emptyList());
+
+        assertThatThrownBy(() -> parkSessionService.exit(100L))
+                .isInstanceOf(RRException.class)
+                .hasMessageContaining("无启用的计费规则");
+    }
+
+    @Test
+    @DisplayName("出场：车位释放 0 行（会话与车位不一致）→ 回滚暴露")
+    void 出场释放失败回滚() {
+        when(parkSessionDao.selectById(100L)).thenReturn(ongoingSession());
+        when(parkSessionDao.update(isNull(), any())).thenReturn(1);
+        when(feeRuleDao.selectList(any())).thenReturn(java.util.List.of(enabledRule(200)));
+        when(parkSpaceDao.update(isNull(), any())).thenReturn(0);
+        doAnswer(inv -> {
+            ParkOrderEntity o = inv.getArgument(0);
+            o.setOrderId(200L);
+            return 1;
+        }).when(parkOrderDao).insert(any(ParkOrderEntity.class));
+
+        assertThatThrownBy(() -> parkSessionService.exit(100L))
+                .isInstanceOf(RRException.class)
+                .hasMessageContaining("车位状态异常");
+    }
+
     // ---------- helpers ----------
 
     private ParkSpaceEntity idleSpace() {
@@ -247,5 +364,21 @@ class ParkSessionServiceImplTest {
         session.setSessionEntryTime(System.currentTimeMillis() / 1000);
         session.setSessionState(state.getCode());
         return session;
+    }
+
+    /** 进行中会话，入场时间在 secondsAgo 秒之前（构造可断言的停车时长） */
+    private ParkSessionEntity sessionParkedSecondsAgo(long secondsAgo) {
+        ParkSessionEntity session = sessionWithState(ParkSessionState.ONGOING);
+        session.setSessionEntryTime(System.currentTimeMillis() / 1000 - secondsAgo);
+        return session;
+    }
+
+    private FeeRuleEntity enabledRule(int priceFen) {
+        FeeRuleEntity rule = new FeeRuleEntity();
+        rule.setRuleId(1L);
+        rule.setRuleName("标准计时收费");
+        rule.setUnitPriceFen(priceFen);
+        rule.setRuleState(FeeRuleState.ENABLED.getCode());
+        return rule;
     }
 }
