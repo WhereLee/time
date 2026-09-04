@@ -28,6 +28,7 @@
 - block-records/P3-出场结算与订单快照.md
 - block-records/P4-管理端HTTP层与权限生效.md
 - block-records/P5-device-sim设备模拟双进程闭环.md
+- block-records/P6-云部署收口与M0验收.md
 - pitfalls/mockito-nested-stubbing.md
 - pitfalls/mock-default-value-by-return-type.md
 - pitfalls/passwordcodec-byte-order.md

@@ -1,0 +1,20 @@
+[Unit]
+Description=reason-device-sim 设备模拟服务（独立小进程 :8300）
+After=network.target reason-main.service
+# sim 上报失败仅日志（业务侧已 fire-and-log 容忍），不依赖 main 在线，故不 Wants
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/reason/sim
+EnvironmentFile=/opt/reason/config/sim/reason-sim.env
+ExecStart=/usr/bin/java -Xms128m -Xmx256m -Dfile.encoding=UTF-8 \
+  -jar /opt/reason/sim/reason-device-sim.jar \
+  --spring.config.additional-location=/opt/reason/config/sim/
+Restart=on-failure
+RestartSec=5
+SuccessExitStatus=143
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

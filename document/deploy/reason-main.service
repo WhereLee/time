@@ -1,0 +1,23 @@
+[Unit]
+Description=reason-main 智慧停车运营平台主服务（模块化单体 :8200）
+After=network.target mysql.service redis-server.service
+Wants=mysql.service redis-server.service
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/reason/main
+# Xmx 预算：业务单体（模块化单体内含停车域全部业务 + RBAC + Quartz JDBC）
+EnvironmentFile=/opt/reason/config/main/reason-main.env
+ExecStart=/usr/bin/java -Xms384m -Xmx512m -Dfile.encoding=UTF-8 \
+  -jar /opt/reason/main/reason-main-1.0.0.jar \
+  --spring.profiles.active=prod \
+  --spring.config.additional-location=/opt/reason/config/main/
+Restart=on-failure
+RestartSec=5
+# Java 进程被 systemd stop 时退出码 143（SIGTERM）视为正常
+SuccessExitStatus=143
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target
