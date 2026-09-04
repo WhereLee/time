@@ -29,9 +29,13 @@ UPDATE park_space SET space_state = 1, space_updatetime = ? WHERE space_id = ? A
 **方案 4（伪）：唯一索引约束"进行中会话唯一"**
 MySQL 8.0 无 partial index（部分索引），无法表达"仅 status=进行中 的行唯一"；用 generated column 模拟（`is_active = (state=0)` 参与唯一索引）是可行但隐蔽的花活——约束语义藏在表达式里，排查与演进成本高。且本场景的占用状态在**另一张表**（park_space），跨表约束数据库层面根本表达不了——这正说明"占用"必须建模成空间表状态列，条件更新才有落点。
 
-## 本项目的落点（P2 实现）
+## 本项目的落点（P2 已实现，双层防护实证）
 
-入场事务 = ①条件更新空间表（行数 0 → 拒绝）②应用层查重兜底（`idx_space_state` 支撑：同车位无进行中会话）③插入会话。唯一索引只留给**天然唯一**的约束：`u_space_no`（编号）、`u_order_session`（一会话一订单）。
+**入场**：①查重兜底（快速失败层：已有进行中会话直接拒绝）②条件更新占位（最终判官：`UPDATE park_space SET state=1 WHERE space_id=? AND state=0`，行数 0 → 拒）③插入会话。
+
+**取消**：守卫（终态不可取消）→ 会话终态化条件更新（`WHERE session_id=? AND state=0`，防并发双取消覆盖写）→ 释放车位条件更新（行数 0 = 会话与车位不一致的数据异常，回滚暴露不静默卡死车位）。
+
+正确性只依赖②/终态化这两步；守卫与查重是失败快路径。**验证分层**：单测 mock 只能测「行数 0 → 拒绝」分支；真库 IT（ParkSessionIT 双线程 CountDownLatch 齐发）验证并发下仅一方生效 + 库内最终状态。唯一索引只留给**天然唯一**约束：`u_space_no`、`u_order_session`。
 
 ## 边界与前提
 

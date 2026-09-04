@@ -24,11 +24,14 @@
 - block-records/security-debt-cleanup.md
 - block-records/observability-baseline.md
 - block-records/P1-停车域表结构与实体.md
+- block-records/P2-会话状态机与并发正确性.md
 - pitfalls/mockito-nested-stubbing.md
 - pitfalls/mock-default-value-by-return-type.md
 - pitfalls/passwordcodec-byte-order.md
 - pitfalls/testresttemplate-contextpath-auto-prefix.md
 - pitfalls/value-yaml-list-binding.md
+- pitfalls/mybatis-plus-lambda-cache-unit-test.md
+- pitfalls/mockito-verify-overloaded-mapper-method.md
 - fixes/authservice-npe-user-not-found.md
 - fixes/demo-account-hash-source-sync.md
 - fixes/quartz-selectwithlocksql-mysql-dialect.md
