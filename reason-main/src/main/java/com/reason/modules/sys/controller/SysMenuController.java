@@ -19,7 +19,7 @@ import com.reason.modules.sys.service.SysMenuService;
 import com.reason.modules.sys.vo.SysMenuVO;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
-import org.apache.shiro.authz.annotation.RequiresPermissions;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -56,7 +56,7 @@ public class SysMenuController extends AbstractController {
 	@ApiOperationSupport(order = 10,ignoreParameters = {"page","limit","areaId","sqlFilter","menuFid"})
 	@SysLog(module = "菜单模块",func = "查询",value = "列表查询菜单")
 	@GetMapping("/list")
-	@RequiresPermissions("sys:menu:list")
+	@PreAuthorize("hasAuthority('sys:menu:list')")
 	public Result<List<SysMenuEntity>> list(SysMenuForm form){
 		List<SysMenuEntity> menuTree = sysMenuService.queryList(form);
 
@@ -72,7 +72,7 @@ public class SysMenuController extends AbstractController {
 	@ApiOperationSupport(order = 20,ignoreParameters = {"page","limit","areaId","sqlFilter"})
 	@SysLog(module = "菜单模块",func = "查询",value = "下拉查询菜单")
 	@GetMapping("/select")
-	@RequiresPermissions("sys:menu:select")
+	@PreAuthorize("hasAuthority('sys:menu:select')")
 	public Result<List<SysMenuEntity>> select(SysMenuForm form){
 		List<SysMenuEntity> menuList = sysMenuService.queryMenu(form);
 
@@ -86,7 +86,7 @@ public class SysMenuController extends AbstractController {
 	@ApiOperationSupport(order = 30)
 	@SysLog(module = "菜单模块",func = "查询",value = "查询菜单详细")
 	@GetMapping("/info/{menuId}")
-	@RequiresPermissions("sys:menu:info")
+	@PreAuthorize("hasAuthority('sys:menu:info')")
 	public Result<SysMenuEntity> info(@PathVariable("menuId") Long menuId){
 		SysMenuEntity menu = sysMenuService.getInfo(menuId);
 
@@ -100,7 +100,7 @@ public class SysMenuController extends AbstractController {
 	@ApiOperationSupport(order = 40,ignoreParameters = {"menuId"})
 	@SysLog(module = "菜单模块",func = "新增",value = "新增菜单")
 	@PostMapping("/save")
-	@RequiresPermissions("sys:menu:save")
+	@PreAuthorize("hasAuthority('sys:menu:save')")
 	public Result save(@RequestBody SysMenuVO menuVO){
 		//只有开发员有新增、修改、删除权限
 		if (!getUser().developer()) {
@@ -118,7 +118,7 @@ public class SysMenuController extends AbstractController {
 	@ApiOperationSupport(order = 50)
 	@SysLog(module = "菜单模块",func = "修改",value = "修改菜单")
 	@PostMapping("/update")
-	@RequiresPermissions("sys:menu:update")
+	@PreAuthorize("hasAuthority('sys:menu:update')")
 	public Result update(@RequestBody SysMenuVO menuVO){
 		//只有开发员有新增、修改、删除权限
 		if (!getUser().developer()) {
@@ -136,7 +136,7 @@ public class SysMenuController extends AbstractController {
 	@ApiOperationSupport(order = 60)
 	@SysLog(module = "菜单模块",func = "删除",value = "删除菜单")
 	@PostMapping("/delete/{menuId}")
-	@RequiresPermissions("sys:menu:delete")
+	@PreAuthorize("hasAuthority('sys:menu:delete')")
 	public Result delete(@PathVariable("menuId") Long menuId){
 		//只有开发员有新增、修改、删除权限
 		if (!getUser().developer()) {

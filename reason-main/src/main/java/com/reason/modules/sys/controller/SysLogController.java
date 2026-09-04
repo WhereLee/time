@@ -5,7 +5,7 @@ import com.reason.common.utils.Result;
 import com.reason.modules.sys.form.SysLogForm;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
-import org.apache.shiro.authz.annotation.RequiresPermissions;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -33,7 +33,7 @@ public class SysLogController extends AbstractController{
     @Operation(summary = "列表查询", description = "查询所有操作日志；权限说明：sys:log:list")
     @ApiOperationSupport(order = 10,ignoreParameters = {"areaId","sqlFilter","logState"})
     @GetMapping("/list")
-    @RequiresPermissions("sys:log:list")
+    @PreAuthorize("hasAuthority('sys:log:list')")
     public Result<PageUtils> list(SysLogForm form){
         form.setLogState(0);
         PageUtils page = sysLogService.queryPage(form);
@@ -48,7 +48,7 @@ public class SysLogController extends AbstractController{
     /*@Operation(summary = "详细查询", description = "查询所选操作日志的详细信息，权限说明：sys:log:info 查询")
     @ApiOperationSupport(order = 30)
     @GetMapping("/info/{logId}")
-    @RequiresPermissions("sys:log:info")
+    @PreAuthorize("hasAuthority('sys:log:info')")
     public Result<SysLogEntity> info(@PathVariable("logId") Long logId){
 		SysLogEntity log = sysLogService.getInfo(logId);
 

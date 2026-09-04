@@ -31,6 +31,25 @@ spring:
   mvc:
     pathmatch:
       matching-strategy: ant_path_matcher
+  quartz:
+    # 任务调度器（spring-boot-starter-quartz 装配，原 ScheduleConfig 手写 Properties 平移至此）
+    job-store-type: jdbc            # JDBC JobStore + LocalDataSourceJobStore（集群防重复调度基础）
+    scheduler-name: ReasonScheduler
+    auto-startup: true
+    startup-delay: 30s              # 延时启动（与迁移前一致）
+    overwrite-existing-jobs: true
+    properties:
+      org.quartz.scheduler.instanceId: AUTO
+      org.quartz.threadPool.class: org.quartz.simpl.SimpleThreadPool
+      org.quartz.threadPool.threadCount: "25"
+      org.quartz.threadPool.threadPriority: "5"
+      org.quartz.jobStore.isClustered: "true"
+      org.quartz.jobStore.clusterCheckinInterval: "15000"
+      org.quartz.jobStore.maxMisfiresToHandleAtATime: "1"
+      org.quartz.jobStore.misfireThreshold: "12000"
+      org.quartz.jobStore.tablePrefix: QRTZ_
+      # MySQL 锁 SQL（原代码为 SQLServer 的 UPDLOCK 写法，MySQL 语法错误——调度器实际启动即失败，已修正为 FOR UPDATE）
+      org.quartz.jobStore.selectWithLockSQL: "SELECT * FROM {0}LOCKS WHERE LOCK_NAME = ? FOR UPDATE"
 #  resources:
 #    add-mappings: false
 

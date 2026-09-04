@@ -26,8 +26,6 @@
         <mybatisplus.version>3.5.7</mybatisplus.version>
         <druid.version>1.2.23</druid.version>
         <jasypt.version>3.0.5</jasypt.version>
-        <quartz.version>2.3.2</quartz.version>
-        <shiro.version>2.0.0</shiro.version>
         <kaptcha.version>0.0.9</kaptcha.version>
         <knife4j.version>4.5.0</knife4j.version>
         <joda.time.version>2.12.7</joda.time.version>
@@ -40,7 +38,30 @@
         <commons.codec.version>1.16.1</commons.codec.version>
     </properties>
 
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>1.19.8</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
+        <!-- Testcontainers：集成测试真实容器（MySQL/Redis） -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mysql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -106,34 +127,15 @@
             <artifactId>jasypt-spring-boot-starter</artifactId>
             <version>${jasypt.version}</version>
         </dependency>
-        <!-- quartz定时任务 -->
+        <!-- quartz 定时任务（spring-boot-starter-quartz：配置外部化到 yml，替代原自研 ScheduleConfig） -->
         <dependency>
-            <groupId>org.quartz-scheduler</groupId>
-            <artifactId>quartz</artifactId>
-            <version>${quartz.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.mchange</groupId>
-                    <artifactId>c3p0</artifactId>
-                </exclusion>
-            </exclusions>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-quartz</artifactId>
         </dependency>
-        <!-- spring-security-crypto：仅取密码加密能力（BCrypt），非完整 Spring Security 框架 -->
+        <!-- Spring Security：认证/授权框架（过滤器链 + 方法级鉴权 @PreAuthorize） -->
         <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-crypto</artifactId>
-        </dependency>
-        <!-- shiro 权限（核心 + Spring 集成；shiro-web 的 servlet 过滤器为 javax 实现，不适用 Boot3/Jakarta，
-             认证过滤器由本项目基于 jakarta.servlet.Filter 自研，见 modules/sys/oauth2/OAuth2Filter） -->
-        <dependency>
-            <groupId>org.apache.shiro</groupId>
-            <artifactId>shiro-core</artifactId>
-            <version>${shiro.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.shiro</groupId>
-            <artifactId>shiro-spring</artifactId>
-            <version>${shiro.version}</version>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
         <!-- kaptcha 图形验证码 -->
         <dependency>
@@ -232,13 +234,18 @@
                     </excludes>
                 </configuration>
             </plugin>
-            <!-- 跳过单元测试（框架改造阶段） -->
+            <!-- 集成测试执行器：verify 阶段运行 *IT（本地无 Docker 不触发，仅 CI） -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                    <skipTests>true</skipTests>
-                </configuration>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

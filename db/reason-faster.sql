@@ -466,7 +466,7 @@ INSERT INTO `sys_role` VALUES (2, '系统管理员', NULL, 1, unix_timestamp(now
 -- Records of sys_user
 -- ----------------------------
 INSERT INTO `sys_user` VALUES (1, 'dev@kf', '9cc3bc4ef4d9e79e0d55e7b2f76cf26a8c8a7f8d625fc04a737f0ea7d39aa550', 'mrspwDtoYvtckE3cHfxl', '开发员', NULL, NULL, NULL, NULL, NULL, NULL, -1, unix_timestamp(now()), unix_timestamp(now()), 0, 0);
-INSERT INTO `sys_user` VALUES (2, 'adminManager', '16de761762f79ffe34607bfe0d02995024517a2c38ddbbd2787b893ec946efef', 'CYiKIzx4410U9yaBPBHE', '系统管理员', NULL, NULL, NULL, NULL, NULL, NULL, 1, unix_timestamp(now()), unix_timestamp(now()), 0, 0);
+INSERT INTO `sys_user` VALUES (2, 'adminManager', '$2a$10$SQvSgY15cXHKG4xu02Q7V.JLVxNkLrnJGB3RCElzu4dBeqQOAEBz.', 'CYiKIzx4410U9yaBPBHE', '系统管理员', NULL, NULL, NULL, NULL, NULL, NULL, 1, unix_timestamp(now()), unix_timestamp(now()), 0, 0);
 
 
 -- ----------------------------

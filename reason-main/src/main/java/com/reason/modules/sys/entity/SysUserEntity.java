@@ -16,7 +16,6 @@ import com.reason.modules.sys.vo.SysUserVO;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.apache.shiro.crypto.hash.Sha256Hash;
 
 /**
  * 

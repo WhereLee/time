@@ -17,10 +17,10 @@ import com.reason.modules.sys.entity.SysLogEntity;
 import com.reason.common.utils.HttpContextUtils;
 import com.reason.common.utils.IPUtils;
 import com.reason.modules.sys.entity.SysUserEntity;
+import com.reason.modules.sys.security.LoginUserHolder;
 import com.reason.modules.sys.service.SysLogService;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.shiro.SecurityUtils;
-import org.apache.shiro.authz.AuthorizationException;
+import org.springframework.security.access.AccessDeniedException;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -69,7 +69,7 @@ public class SysLogAspect {
 				logMessage = "失败：路径不存在";
 			} else if (e instanceof DuplicateKeyException) {
 				logMessage = "失败：数据库中已存在该记录";
-			} else if (e instanceof AuthorizationException) {
+			} else if (e instanceof AccessDeniedException) {
 				logMessage = "失败：没有权限，请联系管理员授权";
 			} else {
 				logMessage = "失败：异常";
@@ -139,8 +139,7 @@ public class SysLogAspect {
 			sysLog.setLogBrowser(request.getHeader("User-Agent"));
 
 			//用户名
-			//String username = ((SysUserEntity) SecurityUtils.getSubject().getPrincipal()).getUsername();
-			SysUserEntity creator = (SysUserEntity) SecurityUtils.getSubject().getPrincipal();
+			SysUserEntity creator = LoginUserHolder.getLoginUser();
 			if (creator != null) {
 				String userName = creator.getUserName();
 				String userRealname = StringUtils.isBlank(creator.getUserRealname()) ? "" : creator.getUserRealname();

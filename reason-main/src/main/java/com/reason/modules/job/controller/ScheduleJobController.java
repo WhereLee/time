@@ -19,7 +19,7 @@ import com.reason.modules.job.vo.ScheduleJobVO;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.shiro.authz.annotation.RequiresPermissions;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -44,7 +44,7 @@ public class ScheduleJobController {
 	@ApiOperationSupport(order = 1,ignoreParameters = {"areaId","sqlFilter"})
 	@SysLog(module = "定时任务",func = "查询",value = "列表查询定时任务")
 	@GetMapping("/list")
-	@RequiresPermissions("sys:schedule:list")
+	@PreAuthorize("hasAuthority('sys:schedule:list')")
 	public Result<PageUtils> list(ScheduleJobForm form){
 		PageUtils page = scheduleJobService.queryPage(form);
 
@@ -58,7 +58,7 @@ public class ScheduleJobController {
 	@ApiOperationSupport(order = 30)
 	@SysLog(module = "定时任务",func = "查询",value = "查询定时任务详细")
 	@GetMapping("/info/{jobId}")
-	@RequiresPermissions("sys:schedule:info")
+	@PreAuthorize("hasAuthority('sys:schedule:info')")
 	public Result<ScheduleJobEntity> info(@PathVariable("jobId") Long jobId){
 		ScheduleJobEntity job = scheduleJobService.getInfo(jobId);
 		
@@ -72,7 +72,7 @@ public class ScheduleJobController {
 	@ApiOperationSupport(order = 40,ignoreParameters = {"jobId"})
 	@SysLog(module = "定时任务",func = "新增",value = "新增定时任务")
 	@PostMapping("/save")
-	@RequiresPermissions("sys:schedule:save")
+	@PreAuthorize("hasAuthority('sys:schedule:save')")
 	public Result save(@RequestBody ScheduleJobVO jobVO){
 		scheduleJobService.saveJob(jobVO);
 		
@@ -86,7 +86,7 @@ public class ScheduleJobController {
 	@ApiOperationSupport(order = 50)
 	@SysLog(module = "定时任务",func = "修改",value = "修改定时任务")
 	@PostMapping("/update")
-	@RequiresPermissions("sys:schedule:update")
+	@PreAuthorize("hasAuthority('sys:schedule:update')")
 	public Result update(@RequestBody ScheduleJobVO jobVO){
 		scheduleJobService.updateJob(jobVO);
 		
@@ -100,7 +100,7 @@ public class ScheduleJobController {
 	@ApiOperationSupport(order = 60)
 	@SysLog(module = "定时任务",func = "删除",value = "删除定时任务")
 	@PostMapping("/delete/{jobId}")
-	@RequiresPermissions("sys:schedule:delete")
+	@PreAuthorize("hasAuthority('sys:schedule:delete')")
 	public Result delete(@PathVariable("jobId") Long jobId){
 		scheduleJobService.deleteJob(jobId);
 		
@@ -114,7 +114,7 @@ public class ScheduleJobController {
 	@ApiOperationSupport(order = 70)
 	@SysLog(module = "定时任务",func = "执行",value = "立即执行定时任务")
 	@PostMapping("/run/{jobId}")
-	@RequiresPermissions("sys:schedule:run")
+	@PreAuthorize("hasAuthority('sys:schedule:run')")
 	public Result run(@PathVariable("jobId") Long jobId){
 		scheduleJobService.run(jobId);
 		
@@ -128,7 +128,7 @@ public class ScheduleJobController {
 	@ApiOperationSupport(order = 80)
 	@SysLog(module = "定时任务",func = "暂停",value = "暂停定时任务")
 	@PostMapping("/pause/{jobId}")
-	@RequiresPermissions("sys:schedule:pause")
+	@PreAuthorize("hasAuthority('sys:schedule:pause')")
 	public Result pause(@PathVariable("jobId") Long jobId){
 		scheduleJobService.pause(jobId);
 		
@@ -142,7 +142,7 @@ public class ScheduleJobController {
 	@ApiOperationSupport(order = 80)
 	@SysLog(module = "定时任务",func = "恢复",value = "恢复定时任务")
 	@PostMapping("/resume/{jobId}")
-	@RequiresPermissions("sys:schedule:resume")
+	@PreAuthorize("hasAuthority('sys:schedule:resume')")
 	public Result resume(@PathVariable("jobId") Long jobId){
 		scheduleJobService.resume(jobId);
 		

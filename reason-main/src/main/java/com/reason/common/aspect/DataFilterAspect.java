@@ -1,7 +1,7 @@
 package com.reason.common.aspect;
 
 import com.reason.common.annotation.DataFilter;
-import com.reason.common.utils.ShiroUtils;
+import com.reason.modules.sys.security.LoginUserHolder;
 import com.reason.common.utils.StringUtils;
 import com.reason.modules.sys.dao.SysMenuDao;
 import com.reason.modules.sys.dao.SysRoleDao;
@@ -47,7 +47,7 @@ public class DataFilterAspect {
     public void dataFilter(JoinPoint point) throws Throwable {
         CommonForm form = (CommonForm) point.getArgs()[0];
 
-        SysUserEntity user = ShiroUtils.getUserEntity();
+        SysUserEntity user = LoginUserHolder.getLoginUser();
         //进行数据过滤
         form.setSqlFilter(getSqlFilter(user,point));
         //log.info("sqlFilter:{}",form.getSqlFilter());

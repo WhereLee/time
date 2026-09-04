@@ -11,7 +11,7 @@ import com.reason.modules.sys.vo.SysPasswordVO;
 import com.reason.modules.sys.vo.SysUserVO;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
-import org.apache.shiro.authz.annotation.RequiresPermissions;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -41,7 +41,7 @@ public class SysUserController extends AbstractController{
     @ApiOperationSupport(order = 1,ignoreParameters = {"areaId","sqlFilter"})
     @SysLog(module = "用户管理",func = "查询",value = "列表查询用户")
     @GetMapping("/list")
-    @RequiresPermissions("sys:user:list")
+    @PreAuthorize("hasAuthority('sys:user:list')")
     public Result<PageUtils> list(SysUserForm form){
         PageUtils page = sysUserService.queryPage(form);
 
@@ -56,7 +56,7 @@ public class SysUserController extends AbstractController{
     @ApiOperationSupport(order = 10,ignoreParameters = {"page","limit","areaId","sqlFilter"})
     @SysLog(module = "用户管理",func = "查询",value = "下拉查询用户")
     @GetMapping("/select")
-    @RequiresPermissions("sys:user:select")
+    @PreAuthorize("hasAuthority('sys:user:select')")
     public Result<List<SysUserEntity>> select(SysUserForm form){
         List<SysUserEntity> areaList = sysUserService.queryUser(form);
 
@@ -71,7 +71,7 @@ public class SysUserController extends AbstractController{
     @ApiOperationSupport(order = 20)
     @SysLog(module = "用户管理",func = "查询",value = "查询用户详细")
     @GetMapping("/info/{userId}")
-    @RequiresPermissions("sys:user:info")
+    @PreAuthorize("hasAuthority('sys:user:info')")
     public Result<SysUserEntity> info(@PathVariable("userId") Long userId){
 		SysUserEntity user = sysUserService.getInfo(userId);
 
@@ -85,7 +85,7 @@ public class SysUserController extends AbstractController{
     @ApiOperationSupport(order = 40,ignoreParameters = {"userId"})
     @SysLog(module = "用户管理",func = "新增",value = "新增用户")
     @PostMapping("/save")
-    @RequiresPermissions("sys:user:save")
+    @PreAuthorize("hasAuthority('sys:user:save')")
     public Result save(@RequestBody SysUserVO userVO){
         /*//只有开发员或系统管理员有权限——2021年11月17日 其他管理员开放角色和用户权限（只能自己创建的）
         if (!getUser().devOrSysAdmin()) {
@@ -104,7 +104,7 @@ public class SysUserController extends AbstractController{
     @ApiOperationSupport(order = 50)
     @SysLog(module = "用户管理",func = "修改",value = "修改用户")
     @PostMapping("/update")
-    @RequiresPermissions("sys:user:update")
+    @PreAuthorize("hasAuthority('sys:user:update')")
     public Result update(@RequestBody SysUserVO userVO){
         /*//只有开发员或系统管理员有权限——2021年11月17日 其他管理员开放角色和用户权限（只能自己创建的）
         if (!getUser().devOrSysAdmin()) {
@@ -122,7 +122,7 @@ public class SysUserController extends AbstractController{
     @ApiOperationSupport(order = 60)
     @SysLog(module = "用户管理",func = "删除",value = "删除用户")
     @PostMapping("/delete/{userId}")
-    @RequiresPermissions("sys:user:delete")
+    @PreAuthorize("hasAuthority('sys:user:delete')")
     public Result delete(@PathVariable("userId") Long userId){
         /*//只有开发员或系统管理员有权限——2021年11月17日 其他管理员开放角色和用户权限（只能自己创建的）
         if (!getUser().devOrSysAdmin()) {
@@ -140,7 +140,7 @@ public class SysUserController extends AbstractController{
     @ApiOperationSupport(order = 70)
     @SysLog(module = "用户管理", func = "关闭", value = "关闭用户")
     @PostMapping("/close/{userId}")
-    @RequiresPermissions("sys:user:close")
+    @PreAuthorize("hasAuthority('sys:user:close')")
     public Result close(@PathVariable("userId") Long userId){
         sysUserService.openOrClose(new SysUserEntity(userId,1), getUser());
 
@@ -154,7 +154,7 @@ public class SysUserController extends AbstractController{
     @ApiOperationSupport(order = 80)
     @SysLog(module = "用户管理", func = "开放", value = "开放用户")
     @PostMapping("/open/{userId}")
-    @RequiresPermissions("sys:user:open")
+    @PreAuthorize("hasAuthority('sys:user:open')")
     public Result open(@PathVariable("userId") Long userId){
         sysUserService.openOrClose(new SysUserEntity(userId,0), getUser());
 
@@ -168,7 +168,7 @@ public class SysUserController extends AbstractController{
     @ApiOperationSupport(order = 85)
     @SysLog(module = "用户管理",func = "密码重置",value = "密码重置")
     @PostMapping("/reset")
-    @RequiresPermissions("sys:user:update")
+    @PreAuthorize("hasAuthority('sys:user:update')")
     public Result reset(@RequestBody SysPasswordVO passwordVO){
         /*//只有开发员或系统管理员有权限——2021年11月17日 其他管理员开放角色和用户权限（只能自己创建的）
         if (!getUser().devOrSysAdmin()) {

@@ -9,7 +9,7 @@
 package com.reason.modules.sys.controller;
 
 import com.reason.modules.sys.entity.SysUserEntity;
-import org.apache.shiro.SecurityUtils;
+import com.reason.modules.sys.security.LoginUserHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,7 +22,7 @@ public abstract class AbstractController {
 	protected Logger logger = LoggerFactory.getLogger(getClass());
 	
 	protected SysUserEntity getUser() {
-		return (SysUserEntity) SecurityUtils.getSubject().getPrincipal();
+		return LoginUserHolder.getLoginUser();
 	}
 
 	protected Long getUserId() {

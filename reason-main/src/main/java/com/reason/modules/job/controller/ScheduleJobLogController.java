@@ -17,7 +17,7 @@ import com.reason.common.utils.PageUtils;
 import com.reason.modules.job.entity.ScheduleJobLogEntity;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
-import org.apache.shiro.authz.annotation.RequiresPermissions;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -41,7 +41,7 @@ public class ScheduleJobLogController {
 	@ApiOperationSupport(order = 1,ignoreParameters = {"areaId","sqlFilter"})
 	@SysLog(module = "定时任务日志",func = "查询",value = "列表查询定时任务日志")
 	@GetMapping("/list")
-	@RequiresPermissions("sys:schedulelog:list")
+	@PreAuthorize("hasAuthority('sys:schedulelog:list')")
 	public Result<PageUtils> list(ScheduleJobLogForm form){
 		PageUtils page = scheduleJobLogService.queryPage(form);
 		
@@ -56,7 +56,7 @@ public class ScheduleJobLogController {
 	@ApiOperationSupport(order = 30)
 	@SysLog(module = "定时任务日志",func = "查询",value = "查询定时任务日志详细")
 	@GetMapping("/info/{logId}")
-	@RequiresPermissions("sys:schedulelog:info")
+	@PreAuthorize("hasAuthority('sys:schedulelog:info')")
 	public Result<ScheduleJobLogEntity> info(@PathVariable("logId") Long logId){
 		ScheduleJobLogEntity log = scheduleJobLogService.getInfo(logId);
 		

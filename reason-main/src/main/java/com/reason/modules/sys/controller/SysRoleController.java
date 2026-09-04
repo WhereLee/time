@@ -20,7 +20,7 @@ import com.reason.modules.sys.vo.SysRoleVO;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.shiro.authz.annotation.RequiresPermissions;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -46,7 +46,7 @@ public class SysRoleController extends AbstractController {
 	@ApiOperationSupport(order = 1,ignoreParameters = {"areaId","sqlFilter"})
 	@SysLog(module = "角色管理", func = "查询", value = "列表查询角色")
 	@GetMapping("/list")
-	@RequiresPermissions("sys:role:list")
+	@PreAuthorize("hasAuthority('sys:role:list')")
 	public Result<PageUtils> list(SysRoleForm form){
 		PageUtils page = sysRoleService.queryPage(form);
 
@@ -62,7 +62,7 @@ public class SysRoleController extends AbstractController {
 	@ApiOperationSupport(order = 10,ignoreParameters = {"page","limit","areaId","sqlFilter"})
 	@SysLog(module = "角色管理", func = "查询", value = "下拉查询角色")
 	@GetMapping("/select")
-	@RequiresPermissions("sys:role:select")
+	@PreAuthorize("hasAuthority('sys:role:select')")
 	public Result<List<SysRoleEntity>> select(SysRoleForm form){
 		List<SysRoleEntity> list = sysRoleService.queryRole(form);
 
@@ -76,7 +76,7 @@ public class SysRoleController extends AbstractController {
 	@ApiOperationSupport(order = 20)
 	@SysLog(module = "角色管理", func = "查询", value = "查询角色详细")
 	@GetMapping("/info/{roleId}")
-	@RequiresPermissions("sys:role:info")
+	@PreAuthorize("hasAuthority('sys:role:info')")
 	public Result<SysRoleEntity> info(@PathVariable("roleId") Long roleId){
 		SysRoleEntity role = sysRoleService.getInfo(roleId);
 
@@ -90,7 +90,7 @@ public class SysRoleController extends AbstractController {
 	@ApiOperationSupport(order = 40,ignoreParameters = {"roleId"})
 	@SysLog(module = "角色管理", func = "新增", value = "新增角色")
 	@PostMapping("/save")
-	@RequiresPermissions("sys:role:save")
+	@PreAuthorize("hasAuthority('sys:role:save')")
 	public Result save(@RequestBody SysRoleVO roleVO){
 		/*//只有开发员或系统管理员有权限——2021年11月17日 其他管理员开放角色和用户权限（只能自己创建的）
 		if (!getUser().devOrSysAdmin()) {
@@ -109,7 +109,7 @@ public class SysRoleController extends AbstractController {
 	@ApiOperationSupport(order = 50)
 	@SysLog(module = "角色管理", func = "修改", value = "修改角色")
 	@PostMapping("/update")
-	@RequiresPermissions("sys:role:update")
+	@PreAuthorize("hasAuthority('sys:role:update')")
 	public Result update(@RequestBody SysRoleVO roleVO){
 		/*//只有开发员或系统管理员有权限——2021年11月17日 其他管理员开放角色和用户权限（只能自己创建的）
 		if (!getUser().devOrSysAdmin()) {
@@ -130,7 +130,7 @@ public class SysRoleController extends AbstractController {
 	@ApiOperationSupport(order = 52,ignoreParameters = {"menuIdList","regionIdList"})
 	@SysLog(module = "角色管理", func = "修改", value = "修改角色基本信息")
 	@PostMapping("/updateRoleBase")
-	@RequiresPermissions("sys:role:update")
+	@PreAuthorize("hasAuthority('sys:role:update')")
 	public Result updateRoleBase(@RequestBody SysRoleVO roleVO){
 		/*//只有开发员或系统管理员有权限——2021年11月17日 其他管理员开放角色和用户权限（只能自己创建的）
 		if (!getUser().devOrSysAdmin()) {
@@ -151,7 +151,7 @@ public class SysRoleController extends AbstractController {
 	@ApiOperationSupport(order = 54,ignoreParameters = {"roleName","roleComment","areaIdList"})
 	@SysLog(module = "角色管理", func = "修改", value = "修改角色菜单权限")
 	@PostMapping("/updateRoleMenu")
-	@RequiresPermissions("sys:role:update")
+	@PreAuthorize("hasAuthority('sys:role:update')")
 	public Result updateRoleMenu(@RequestBody SysRoleVO roleVO){
 		/*//只有开发员或系统管理员有权限——2021年11月17日 其他管理员开放角色和用户权限（只能自己创建的）
 		if (!getUser().devOrSysAdmin()) {
@@ -169,7 +169,7 @@ public class SysRoleController extends AbstractController {
 	@ApiOperationSupport(order = 60)
 	@SysLog(module = "角色管理", func = "删除", value = "删除角色")
 	@PostMapping("/delete/{roleId}")
-	@RequiresPermissions("sys:role:delete")
+	@PreAuthorize("hasAuthority('sys:role:delete')")
 	public Result delete(@PathVariable("roleId") Long roleId){
 		/*//只有开发员或系统管理员有权限——2021年11月17日 其他管理员开放角色和用户权限（只能自己创建的）
 		if (!getUser().devOrSysAdmin()) {

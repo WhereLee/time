@@ -11,7 +11,7 @@ import com.reason.modules.sys.service.SysParamService;
 import com.reason.modules.sys.vo.SysParamVO;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
-import org.apache.shiro.authz.annotation.RequiresPermissions;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -35,7 +35,7 @@ public class SysParamController {
     @ApiOperationSupport(order = 1,ignoreParameters = {"areaId","sqlFilter"})
     @SysLog(module = "参数模块",func = "查询",value = "分页查询参数")
     @GetMapping("/list")
-    @RequiresPermissions("sys:param:list")
+    @PreAuthorize("hasAuthority('sys:param:list')")
     public Result<PageUtils> list(SysParamForm form){
         PageUtils page = sysParamService.queryPage(form);
 
@@ -50,7 +50,7 @@ public class SysParamController {
     @ApiOperationSupport(order = 20)
     @SysLog(module = "参数模块",func = "查询",value = "查询参数详细")
     @GetMapping("/info/{paramId}")
-    @RequiresPermissions("sys:param:info")
+    @PreAuthorize("hasAuthority('sys:param:info')")
     public Result<SysParamEntity> info(@PathVariable("paramId") Long paramId){
 		SysParamEntity param = sysParamService.getById(paramId);
 
@@ -64,7 +64,7 @@ public class SysParamController {
     @ApiOperationSupport(order = 40,ignoreParameters = {"paramId"})
     @SysLog(module = "参数模块",func = "新增",value = "新增参数")
     @PostMapping("/save")
-    @RequiresPermissions("sys:param:save")
+    @PreAuthorize("hasAuthority('sys:param:save')")
     public Result save(@RequestBody SysParamVO paramVO){
         sysParamService.saveParam(paramVO);
 
@@ -78,7 +78,7 @@ public class SysParamController {
     @ApiOperationSupport(order = 50,ignoreParameters = {"paramName","paramKey","paramComment"})
     @SysLog(module = "参数模块",func = "修改",value = "修改参数")
     @PostMapping("/update")
-    @RequiresPermissions("sys:param:update")
+    @PreAuthorize("hasAuthority('sys:param:update')")
     public Result update(@RequestBody SysParamVO paramVO){
 		sysParamService.updateParam(paramVO);
 
@@ -92,7 +92,7 @@ public class SysParamController {
     @ApiOperationSupport(order = 70)
     @SysLog(module = "参数模块",func = "关闭",value = "关闭参数")
     @PostMapping("/close/{paramId}")
-    @RequiresPermissions("sys:param:close")
+    @PreAuthorize("hasAuthority('sys:param:close')")
     public Result close(@PathVariable("paramId") Long paramId){
         sysParamService.openOrClose(new SysParamEntity(paramId,1));
 
@@ -106,7 +106,7 @@ public class SysParamController {
     @ApiOperationSupport(order = 80)
     @SysLog(module = "参数模块",func = "开放",value = "开放参数")
     @PostMapping("/open/{paramId}")
-    @RequiresPermissions("sys:param:open")
+    @PreAuthorize("hasAuthority('sys:param:open')")
     public Result open(@PathVariable("paramId") Long paramId){
         sysParamService.openOrClose(new SysParamEntity(paramId,0));
 

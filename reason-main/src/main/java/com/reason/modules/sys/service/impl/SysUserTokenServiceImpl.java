@@ -12,7 +12,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.reason.modules.sys.dao.SysUserTokenDao;
 import com.reason.modules.sys.entity.SysLoginEntity;
 import com.reason.modules.sys.entity.SysUserTokenEntity;
-import com.reason.modules.sys.oauth2.TokenGenerator;
+import com.reason.modules.sys.security.TokenGenerator;
 import com.reason.modules.sys.service.SysUserTokenService;
 import org.springframework.stereotype.Service;
 
