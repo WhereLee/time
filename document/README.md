@@ -23,6 +23,7 @@
 - block-records/quartz-starter-migration.md
 - block-records/security-debt-cleanup.md
 - block-records/observability-baseline.md
+- block-records/P1-停车域表结构与实体.md
 - pitfalls/mockito-nested-stubbing.md
 - pitfalls/mock-default-value-by-return-type.md
 - pitfalls/passwordcodec-byte-order.md

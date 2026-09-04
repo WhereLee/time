@@ -50,10 +50,14 @@ class AuthIT {
             .withDatabaseName("reason_faster")
             .withUsername("root")
             .withPassword("root")
-            //仓库根 db/reason-faster.sql 挂载进 entrypoint 初始化目录：容器创建后自动建库导入
+            //仓库根 db/ 脚本挂载进 entrypoint 初始化目录：容器创建后按文件名序自动建库导入
+            //01-壳子基线（23 表）；02-parking 业务域（停车域 4 表 + 预置规则 + 菜单注册）
             .withCopyFileToContainer(
                     MountableFile.forHostPath("../db/reason-faster.sql"),
-                    "/docker-entrypoint-initdb.d/01-reason-faster.sql");
+                    "/docker-entrypoint-initdb.d/01-reason-faster.sql")
+            .withCopyFileToContainer(
+                    MountableFile.forHostPath("../db/02-parking.sql"),
+                    "/docker-entrypoint-initdb.d/02-parking.sql");
 
     /** Testcontainers 无官方 Redis 模块，用通用容器 */
     @Container
