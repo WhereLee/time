@@ -97,3 +97,10 @@ jasypt:
     salt-generator-classname: org.jasypt.salt.RandomSaltGenerator
     iv-generator-classname: org.jasypt.iv.RandomIvGenerator
     string-output-type: base64
+
+# actuator 最小暴露：仅 health/info（不开放 metrics/mappings，避免信息泄漏）
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

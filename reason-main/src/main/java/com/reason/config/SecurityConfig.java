@@ -42,6 +42,7 @@ public class SecurityConfig {
             "/v3/api-docs", "/v3/api-docs/**", "/doc.html", "/swagger-ui/**",
             "/sys/init", "/sys/code", "/sys/login", "/sys/auth",
             "/test/**", "/captcha.jpg", "/aaa.txt", "/app/**", "/etc/test/**",
+            "/actuator/health", "/actuator/info",
             "/error"
     };
 

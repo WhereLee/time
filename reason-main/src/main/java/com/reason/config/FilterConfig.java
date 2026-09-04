@@ -8,6 +8,7 @@
 
 package com.reason.config;
 
+import com.reason.common.filter.TraceIdFilter;
 import com.reason.common.xss.XssFilter;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -35,6 +36,17 @@ public class FilterConfig {
         registration.addUrlPatterns("/*");
         registration.setName("requestContextFilter");
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return registration;
+    }
+
+    @Bean
+    public FilterRegistrationBean traceIdFilterRegistration() {
+        FilterRegistrationBean registration = new FilterRegistrationBean();
+        registration.setFilter(new TraceIdFilter());
+        registration.addUrlPatterns("/*");
+        registration.setName("traceIdFilter");
+        //紧跟 RequestContextFilter 之后，仍远早于 Security 过滤器链（order -100）与 xssFilter
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
         return registration;
     }
 

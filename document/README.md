@@ -16,6 +16,7 @@
 - block-records/A1-测试基建与核心单测.md
 - block-records/quartz-starter-migration.md
 - block-records/security-debt-cleanup.md
+- block-records/observability-baseline.md
 - pitfalls/mockito-nested-stubbing.md
 - pitfalls/mock-default-value-by-return-type.md
 - pitfalls/passwordcodec-byte-order.md
@@ -26,3 +27,4 @@
 - fixes/quartz-selectwithlocksql-mysql-dialect.md
 - knowledge/mockito-strict-stubs.md
 - roadmap/login-attempt-guard-extraction.md
+- roadmap/async-mdc-taskdecorator.md
