@@ -32,6 +32,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>容器生命周期：static @Container 在当前 JVM 的所有 IT 类间共享；
  * 每次 CI 均为全新容器、用一次即焚——登录写 token、日志切面写 sys_log 均无污染顾虑。</p>
+ *
+ * <p>路径注意：RANDOM_PORT 下 TestRestTemplate 的 LocalHostUriTemplateHandler 会自动拼接
+ * context-path（/api），用例路径必须不带 /api 前缀（曾因双层 /api/api 导致 401 假绿，见
+ * document/pitfalls/testresttemplate-contextpath-auto-prefix.md）。</p>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
@@ -73,7 +77,7 @@ class AuthIT {
     @Test
     @DisplayName("无 token 访问受保护接口：401 + 统一 JSON 错误体")
     void 无token访问受保护接口_返回401JSON() {
-        ResponseEntity<String> resp = restTemplate.getForEntity("/api/sys/user/info", String.class);
+        ResponseEntity<String> resp = restTemplate.getForEntity("/sys/user/info", String.class);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         JSONObject body = JSON.parseObject(resp.getBody());
@@ -89,7 +93,7 @@ class AuthIT {
         req.put("password", PASSWORD);
 
         ResponseEntity<String> resp = restTemplate.postForEntity(
-                "/api/sys/login", jsonEntity(req), String.class);
+                "/sys/login", jsonEntity(req), String.class);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JSONObject body = JSON.parseObject(resp.getBody());
@@ -104,13 +108,13 @@ class AuthIT {
         req.put("loginname", USERNAME);
         req.put("password", PASSWORD);
         String token = JSON.parseObject(
-                restTemplate.postForEntity("/api/sys/login", jsonEntity(req), String.class).getBody())
+                restTemplate.postForEntity("/sys/login", jsonEntity(req), String.class).getBody())
                 .getJSONObject("data").getString("token");
 
         HttpHeaders headers = new HttpHeaders();
         headers.set("token", token);
         ResponseEntity<String> resp = restTemplate.exchange(
-                "/api/sys/user/info", HttpMethod.GET, new HttpEntity<>(headers), String.class);
+                "/sys/user/info", HttpMethod.GET, new HttpEntity<>(headers), String.class);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JSONObject body = JSON.parseObject(resp.getBody());
@@ -124,7 +128,7 @@ class AuthIT {
         HttpHeaders headers = new HttpHeaders();
         headers.set("token", "forged-token-123456");
         ResponseEntity<String> resp = restTemplate.exchange(
-                "/api/sys/user/info", HttpMethod.GET, new HttpEntity<>(headers), String.class);
+                "/sys/user/info", HttpMethod.GET, new HttpEntity<>(headers), String.class);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
