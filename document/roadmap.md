@@ -2,6 +2,7 @@
 
 > 本文件记录**明确说过"后续再做/先删掉后面补"**的功能点，留着备用。
 > 原则：不现在实现，不因为没做而遗漏——想启用时按这里来。
+> 2026-09-04 起，新增待办按「一个问题一个文件」记录在 `document/roadmap/` 目录（例：login-attempt-guard-extraction.md），本文件保留旧条目索引。
 
 ## 1. 腾讯云 COS 对象存储（后续再写）⭐
 
@@ -20,10 +21,9 @@
 - **后续**：中小项目 95% 用不上；真需要时放开 `application-dev.yml` 中注释的 `dynamic` 配置块
 - 备选：`dynamic-datasource-spring-boot3-starter`（社区方案，文档全），YAGNI 暂不引入
 
-## 3. Shiro 官方 Boot3 starter（跟踪）
+## 3. Shiro 官方 Boot3 starter（已关闭——被 Security 6 迁移取代）
 
-- **现状**：shiro 官方 `shiro-spring-boot-web-starter` 对 Spring Boot 3/Jakarta 的支持最高版本为 `3.0.0-alpha-1`（未稳定），故自研 jakarta Filter（`OAuth2Filter`）
-- **触发**：官方发布 stable 版后，可评估替换为官方 starter，简化 `OAuth2Filter/ShiroConfig` 的自研代码
+- **状态**：2026-09-04 已整体迁移至 Spring Security 6（SecurityConfig + AuthTokenFilter），Shiro 依赖已移除，本条目关闭
 
 ## 4. MongDB / 短信 / 企业微信 / 微信（已删除，不计划恢复）
 
