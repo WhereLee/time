@@ -15,6 +15,9 @@
 
 - 项目总体计划-智慧充电运营平台.md（总纲：叙事/资产/蓝图/块路线）
 
+### 阶段计划
+- plans/M0-停车域最小闭环计划.md（M0 执行计划：验收/边界/模型/接口/小步划分）
+
 ### 块记录
 - block-records/A1-测试基建与核心单测.md
 - block-records/quartz-starter-migration.md
