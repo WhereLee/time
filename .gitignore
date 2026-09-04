@@ -1,0 +1,14 @@
+.gitignore
+.git
+.idea
+/reason-main/target
+/reason-main/logs/
+/logs
+/res
+/temp
+.reasonix/
+.vscode/
+*.class
+*.log
+*.gz
+/reason-device-sim/target
