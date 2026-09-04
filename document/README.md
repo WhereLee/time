@@ -13,6 +13,9 @@
 
 ## 当前文件清单
 
+- 项目总体计划-智慧充电运营平台.md（总纲：叙事/资产/蓝图/块路线）
+
+### 块记录
 - block-records/A1-测试基建与核心单测.md
 - block-records/quartz-starter-migration.md
 - block-records/security-debt-cleanup.md
@@ -26,5 +29,7 @@
 - fixes/demo-account-hash-source-sync.md
 - fixes/quartz-selectwithlocksql-mysql-dialect.md
 - knowledge/mockito-strict-stubs.md
+
+### 待办
 - roadmap/login-attempt-guard-extraction.md
 - roadmap/async-mdc-taskdecorator.md
