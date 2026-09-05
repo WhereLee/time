@@ -389,6 +389,61 @@ class ChargeSessionServiceImplTest {
                 .hasMessageContaining("桩状态异常");
     }
 
+    // ---------- 超时强制结束（调度巡检驱动） ----------
+
+    @Test
+    @DisplayName("超时结束：悬挂会话 → state=3 终态 + 0 电 0 元订单 + 不发权益 + 桩释放")
+    void 超时强制结束成功() {
+        when(chargeSessionDao.selectById(200L)).thenReturn(chargingSession());
+        when(chargeSessionDao.update(isNull(), any())).thenReturn(1);
+        when(chargeFeeRuleDao.selectList(any())).thenReturn(java.util.List.of(enabledRule()));
+        doAnswer(inv -> {
+            ChargeOrderEntity e = inv.getArgument(0);
+            e.setOrderId(3000L);
+            return 1;
+        }).when(chargeOrderDao).insert(any(ChargeOrderEntity.class));
+        when(chargingPileDao.update(isNull(), any())).thenReturn(1);
+
+        Long orderId = chargeSessionService.timeoutFinish(200L, "超时巡检");
+
+        assertThat(orderId).isEqualTo(3000L);
+        //0 电 0 元订单（结算闭环可对账）
+        ArgumentCaptor<ChargeOrderEntity> orderCaptor = ArgumentCaptor.forClass(ChargeOrderEntity.class);
+        verify(chargeOrderDao).insert(orderCaptor.capture());
+        ChargeOrderEntity order = orderCaptor.getValue();
+        assertThat(order.getEnergyWh()).isZero();
+        assertThat(order.getElecAmountFen()).isZero();
+        assertThat(order.getServiceAmountFen()).isZero();
+        assertThat(order.getAmountFen()).isZero();
+        //0 电量不签发权益（堵免费薅权益）
+        org.mockito.Mockito.verify(benefitRecordDao, org.mockito.Mockito.never())
+                .insert(any(BenefitRecordEntity.class));
+        verify(chargingPileDao).update(isNull(), any());
+    }
+
+    @Test
+    @DisplayName("超时结束：终态会话（已结束）→ 非法迁移拒绝（巡检不覆盖正常终态）")
+    void 超时结束非法迁移() {
+        ChargeSessionEntity finished = chargingSession();
+        finished.setSessionState(ChargeSessionState.FINISHED.getCode());
+        when(chargeSessionDao.selectById(200L)).thenReturn(finished);
+
+        assertThatThrownBy(() -> chargeSessionService.timeoutFinish(200L, "超时巡检"))
+                .isInstanceOf(RRException.class)
+                .hasMessageContaining("非法");
+    }
+
+    @Test
+    @DisplayName("超时结束：判官 0 行（并发被 cancel 抢先）→ 拒绝，下轮重扫不再命中")
+    void 超时结束并发抢先() {
+        when(chargeSessionDao.selectById(200L)).thenReturn(chargingSession());
+        when(chargeSessionDao.update(isNull(), any())).thenReturn(0);
+
+        assertThatThrownBy(() -> chargeSessionService.timeoutFinish(200L, "超时巡检"))
+                .isInstanceOf(RRException.class)
+                .hasMessageContaining("状态已变更");
+    }
+
     // ---------- 夹具 ----------
 
     private ChargingPileEntity idlePile() {

@@ -179,6 +179,23 @@ public class ChargeSessionServiceImpl extends ServiceImpl<ChargeSessionDao, Char
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long finish(Long sessionId, Long energyWh) {
+        return settle(sessionId, energyWh, ChargeSessionState.FINISHED, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long timeoutFinish(Long sessionId, String reason) {
+        //0 电量强制结束：巡检驱动的悬挂终态，不产生电量与权益
+        return settle(sessionId, 0L, ChargeSessionState.TIMEOUT_FINISHED, reason);
+    }
+
+    /**
+     * 结算公共链路（finish/timeoutFinish 共用）：判官终态化 → 读费率 → 订单快照 → 电量>0 签发权益 → 桩释放
+     *
+     * @param targetState 目标终态（已结束/超时结束）
+     * @param reason      终态原因（仅取消/超时语义写入，正常结束为空）
+     */
+    private Long settle(Long sessionId, Long energyWh, ChargeSessionState targetState, String reason) {
         if (sessionId == null) {
             throw new RRException("会话id不能为空");
         }
@@ -194,18 +211,19 @@ public class ChargeSessionServiceImpl extends ServiceImpl<ChargeSessionDao, Char
 
         //2.守卫（快速失败层）：非法迁移（终态不可结束）语义化拒绝
         ChargeSessionState cur = ChargeSessionState.of(session.getSessionState());
-        ChargeSessionState.assertCanTransit(cur, ChargeSessionState.FINISHED);
+        ChargeSessionState.assertCanTransit(cur, targetState);
 
         long now = System.currentTimeMillis() / 1000;
 
-        //3.会话终态化（最终判官）：充电中 → 已结束，电量落会话
-        //  并发下 finish/cancel 同时读到充电中时仅一方行数>0，另一方收到"状态已变更"而非继续写账
+        //3.会话终态化（最终判官）：充电中 → 目标终态，电量落会话
+        //  并发下 finish/cancel/timeout 同时读到充电中时仅一方行数>0，另一方收到"状态已变更"而非继续写账
         int finishRows = chargeSessionDao.update(null, new LambdaUpdateWrapper<ChargeSessionEntity>()
                 .eq(ChargeSessionEntity::getSessionId, sessionId)
                 .eq(ChargeSessionEntity::getSessionState, ChargeSessionState.CHARGING.getCode())
-                .set(ChargeSessionEntity::getSessionState, ChargeSessionState.FINISHED.getCode())
+                .set(ChargeSessionEntity::getSessionState, targetState.getCode())
                 .set(ChargeSessionEntity::getSessionEndTime, now)
                 .set(ChargeSessionEntity::getEnergyWh, energyWh)
+                .set(reason != null, ChargeSessionEntity::getCancelReason, reason)
                 .set(ChargeSessionEntity::getSessionUpdatetime, now));
         if (finishRows == 0) {
             throw new RRException("会话状态已变更，请刷新后重试：" + sessionId);

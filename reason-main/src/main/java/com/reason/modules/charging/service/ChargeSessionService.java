@@ -46,4 +46,17 @@ public interface ChargeSessionService {
      * @throws com.reason.common.exception.RRException 会话不存在/非充电中（非法迁移）/无启用费率/状态已被并发变更/桩状态异常（回滚暴露）
      */
     Long finish(Long sessionId, Long energyWh);
+
+    /**
+     * 超时强制结束（调度巡检驱动）：悬挂充电中会话 → 超时结束（state=3）+ 0 电 0 元订单 + 不发权益 + 桩释放（单事务）
+     *
+     * <p>语义：设备断连/丢失上报的兜底终态——结算闭环（0 元也有订单可对账），
+     * 0 电量不触发权益签发（堵免费薅权益）；重复巡检由会话判官挡（条件更新仅一次生效）。</p>
+     *
+     * @param sessionId 充电会话 id
+     * @param reason    超时原因（写入 cancel_reason 溯源）
+     * @return 充电订单 id（0 元订单）
+     * @throws com.reason.common.exception.RRException 会话不存在/非充电中（非法迁移）/无启用费率/状态已被并发变更/桩状态异常
+     */
+    Long timeoutFinish(Long sessionId, String reason);
 }

@@ -66,7 +66,10 @@ class AuthIT {
                     "/docker-entrypoint-initdb.d/04-charging.sql")
             .withCopyFileToContainer(
                     MountableFile.forHostPath("../db/05-系统管理员授权充电菜单.sql"),
-                    "/docker-entrypoint-initdb.d/05-charging-role-menu-grant.sql");
+                    "/docker-entrypoint-initdb.d/05-charging-role-menu-grant.sql")
+            .withCopyFileToContainer(
+                    MountableFile.forHostPath("../db/06-业务定时任务注册.sql"),
+                    "/docker-entrypoint-initdb.d/06-business-jobs.sql");
 
     /** Testcontainers 无官方 Redis 模块，用通用容器 */
     @Container
