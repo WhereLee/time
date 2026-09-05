@@ -223,6 +223,23 @@ public class ParkSessionServiceImpl extends ServiceImpl<ParkSessionDao, ParkSess
     }
 
     @Override
+    public OngoingParkSession getOngoingBySpaceId(Long spaceId) {
+        if (spaceId == null) {
+            throw new RRException("车位id不能为空");
+        }
+        //该查询供充电开始锚定使用；正确数据态下同车位进行中会话唯一（入场判官保证），
+        //LIMIT 1 仅防御历史脏数据导致的 selectOne 多行异常，不参与正确性
+        ParkSessionEntity session = parkSessionDao.selectOne(new LambdaQueryWrapper<ParkSessionEntity>()
+                .eq(ParkSessionEntity::getSpaceId, spaceId)
+                .eq(ParkSessionEntity::getSessionState, ParkSessionState.ONGOING.getCode())
+                .last("LIMIT 1"));
+        if (session == null) {
+            return null;
+        }
+        return new OngoingParkSession(session.getSessionId(), session.getPlateNo(), session.getSpaceNo());
+    }
+
+    @Override
     public PageUtils queryPage(ParkSessionForm form) {
         com.baomidou.mybatisplus.core.metadata.IPage<ParkSessionEntity> page =
                 new Query<ParkSessionEntity>().getPage(new MapUtils()

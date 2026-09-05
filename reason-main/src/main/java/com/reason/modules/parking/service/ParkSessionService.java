@@ -42,6 +42,23 @@ public interface ParkSessionService {
     Long exit(Long sessionId);
 
     /**
+     * 查询指定车位的进行中停车会话（跨上下文只读能力：charging 域充电开始锚定用）
+     *
+     * <p>返回轻量视图而非实体：跨限界上下文只传递协议化数据，不暴露内部实体形态
+     * （凭证化边界的另一面——出方向也只给最小必要信息）。</p>
+     *
+     * @param spaceId 车位 id
+     * @return 进行中会话视图；车位空闲/无会话时返回 null
+     */
+    OngoingParkSession getOngoingBySpaceId(Long spaceId);
+
+    /**
+     * 进行中停车会话视图（会话 id + 车牌 + 车位编号；车牌供充电开始的一致性校验）
+     */
+    record OngoingParkSession(Long sessionId, String plateNo, String spaceNo) {
+    }
+
+    /**
      * 会话分页查询（管理端只读：车牌/车位模糊 + 状态筛选）
      */
     PageUtils queryPage(ParkSessionForm form);
