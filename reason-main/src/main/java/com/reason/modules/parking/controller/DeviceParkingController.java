@@ -55,7 +55,8 @@ public class DeviceParkingController {
     @ApiOperationSupport(order = 2)
     @PostMapping("/exit")
     public Result<Map<String, Object>> exit(@RequestBody DeviceEventBody body) {
-        Long orderId = parkSessionService.exit(body.getSessionId());
+        //benefitNo 可选：设备/闸口读卡器携带免停权益码（跨方凭证），空则普通计费出场
+        Long orderId = parkSessionService.exit(body.getSessionId(), body.getBenefitNo());
         //放行指令：失败仅告警（账务已完成，指令可重试性归 M2 设备治理）
         deviceCommandClient.sendCommand(DeviceCommandClient.CMD_OPEN_GATE, body.getSpaceNo());
         return Result.ok(Map.of("orderId", orderId));
@@ -82,5 +83,6 @@ public class DeviceParkingController {
         private String plateNo;
         private Long sessionId;
         private String cancelReason;
+        private String benefitNo;
     }
 }

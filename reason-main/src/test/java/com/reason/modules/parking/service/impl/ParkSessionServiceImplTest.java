@@ -3,6 +3,7 @@ package com.reason.modules.parking.service.impl;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.reason.common.exception.RRException;
+import com.reason.modules.charging.service.ChargingBenefitService;
 import com.reason.modules.parking.dao.FeeRuleDao;
 import com.reason.modules.parking.dao.ParkOrderDao;
 import com.reason.modules.parking.dao.ParkSessionDao;
@@ -27,9 +28,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -54,6 +59,8 @@ class ParkSessionServiceImplTest {
     private FeeRuleDao feeRuleDao;
     @Mock
     private ParkOrderDao parkOrderDao;
+    @Mock
+    private ChargingBenefitService chargingBenefitService;
     @InjectMocks
     private ParkSessionServiceImpl parkSessionService;
 
@@ -335,6 +342,139 @@ class ParkSessionServiceImplTest {
         assertThatThrownBy(() -> parkSessionService.exit(100L))
                 .isInstanceOf(RRException.class)
                 .hasMessageContaining("车位状态异常");
+    }
+
+    // ---------- 出场减免（跨方权益核销） ----------
+
+    /** 有效权益视图：免停 1h、锚定会话 100（与夹具会话一致）、未过期未核销 */
+    private static final String BN = "BN20260905093000123456";
+
+    private ChargingBenefitService.BenefitView availableBenefit(int freeSeconds, long anchorSessionId) {
+        return new ChargingBenefitService.BenefitView(BN, freeSeconds,
+                System.currentTimeMillis() / 1000 + 86_400L, 0, anchorSessionId, 9L);
+    }
+
+    private void stubExitSettlement() {
+        when(parkSessionDao.update(isNull(), any())).thenReturn(1);
+        when(feeRuleDao.selectList(any())).thenReturn(java.util.List.of(enabledRule(200)));
+        when(parkSpaceDao.update(isNull(), any())).thenReturn(1);
+        doAnswer(inv -> {
+            ParkOrderEntity o = inv.getArgument(0);
+            o.setOrderId(200L);
+            return 1;
+        }).when(parkOrderDao).insert(any(ParkOrderEntity.class));
+    }
+
+    @Test
+    @DisplayName("出场+有效权益（停 2h 免 1h）：应收 400 减 200 实付 200，凭证核销成功")
+    void 出场免停核销成功() {
+        when(parkSessionDao.selectById(100L)).thenReturn(sessionParkedSecondsAgo(7200));
+        stubExitSettlement();
+        when(chargingBenefitService.check(BN)).thenReturn(availableBenefit(3600, 100L));
+        when(chargingBenefitService.redeem(eq(BN), eq(100L), eq(200L), anyLong())).thenReturn(true);
+
+        Long orderId = parkSessionService.exit(100L, BN);
+
+        assertThat(orderId).isEqualTo(200L);
+        ArgumentCaptor<ParkOrderEntity> captor = ArgumentCaptor.forClass(ParkOrderEntity.class);
+        verify(parkOrderDao).insert(captor.capture());
+        ParkOrderEntity order = captor.getValue();
+        assertThat(order.getAmountFen()).isEqualTo(400L);
+        assertThat(order.getDiscountFen()).isEqualTo(200L);   //floor(3600×200/3600)=200
+        assertThat(order.getBenefitNo()).isEqualTo(BN);       //凭证快照
+        verify(chargingBenefitService).redeem(eq(BN), eq(100L), eq(200L), anyLong());
+    }
+
+    @Test
+    @DisplayName("出场减免上限：免停 2h（应收 400）→ 减免封顶 400 全免，实付 0")
+    void 出场减免不超应收() {
+        when(parkSessionDao.selectById(100L)).thenReturn(sessionParkedSecondsAgo(7200));
+        stubExitSettlement();
+        when(chargingBenefitService.check(BN)).thenReturn(availableBenefit(7200, 100L));
+        when(chargingBenefitService.redeem(eq(BN), eq(100L), eq(200L), anyLong())).thenReturn(true);
+
+        parkSessionService.exit(100L, BN);
+
+        ArgumentCaptor<ParkOrderEntity> captor = ArgumentCaptor.forClass(ParkOrderEntity.class);
+        verify(parkOrderDao).insert(captor.capture());
+        ParkOrderEntity order = captor.getValue();
+        assertThat(order.getAmountFen()).isEqualTo(400L);
+        assertThat(order.getDiscountFen()).isEqualTo(400L);   //min(7200×200/3600, 400)=400 全免
+    }
+
+    @Test
+    @DisplayName("出场+权益不存在：按无减免结算（快照无减免字段），不发起核销")
+    void 出场权益不存在() {
+        when(parkSessionDao.selectById(100L)).thenReturn(sessionParkedSecondsAgo(7200));
+        stubExitSettlement();
+        when(chargingBenefitService.check(BN)).thenReturn(null);
+
+        parkSessionService.exit(100L, BN);
+
+        ArgumentCaptor<ParkOrderEntity> captor = ArgumentCaptor.forClass(ParkOrderEntity.class);
+        verify(parkOrderDao).insert(captor.capture());
+        ParkOrderEntity order = captor.getValue();
+        assertThat(order.getAmountFen()).isEqualTo(400L);
+        assertThat(order.getDiscountFen()).isNull();
+        assertThat(order.getBenefitNo()).isNull();
+        verify(chargingBenefitService, never()).redeem(anyString(), any(), any(), anyLong());
+    }
+
+    @Test
+    @DisplayName("出场+权益已核销/已过期/锚定错配：均按无减免结算，不发起核销")
+    void 出场权益异常态() {
+        when(parkSessionDao.selectById(100L)).thenReturn(sessionParkedSecondsAgo(7200));
+        stubExitSettlement();
+        //已核销（state=1）
+        when(chargingBenefitService.check(BN)).thenReturn(new ChargingBenefitService.BenefitView(BN, 3600,
+                System.currentTimeMillis() / 1000 + 86_400L, 1, 100L, 9L));
+        parkSessionService.exit(100L, BN);
+        //已过期（expire <= now）
+        when(chargingBenefitService.check(BN)).thenReturn(new ChargingBenefitService.BenefitView(BN, 3600,
+                System.currentTimeMillis() / 1000 - 1L, 0, 100L, 9L));
+        parkSessionService.exit(100L, BN);
+        //锚定错配（锚定别的停车会话）
+        when(chargingBenefitService.check(BN)).thenReturn(availableBenefit(3600, 999L));
+        parkSessionService.exit(100L, BN);
+
+        ArgumentCaptor<ParkOrderEntity> captor = ArgumentCaptor.forClass(ParkOrderEntity.class);
+        verify(parkOrderDao, times(3)).insert(captor.capture());
+        captor.getAllValues().forEach(order -> {
+            assertThat(order.getDiscountFen()).isNull();
+            assertThat(order.getBenefitNo()).isNull();
+        });
+        verify(chargingBenefitService, never()).redeem(anyString(), any(), any(), anyLong());
+    }
+
+    @Test
+    @DisplayName("出场不带权益码：普通计费路径不受影响")
+    void 出场不带权益() {
+        when(parkSessionDao.selectById(100L)).thenReturn(sessionParkedSecondsAgo(7200));
+        stubExitSettlement();
+
+        Long orderId = parkSessionService.exit(100L);
+
+        assertThat(orderId).isEqualTo(200L);
+        verify(chargingBenefitService, never()).check(anyString());
+        verify(chargingBenefitService, never()).redeem(anyString(), any(), any(), anyLong());
+    }
+
+    @Test
+    @DisplayName("出场+并发双花败方（redeem false）：修正订单为无减免，出场仍成功")
+    void 出场核销双花败方() {
+        when(parkSessionDao.selectById(100L)).thenReturn(sessionParkedSecondsAgo(7200));
+        stubExitSettlement();
+        when(chargingBenefitService.check(BN)).thenReturn(availableBenefit(3600, 100L));
+        when(chargingBenefitService.redeem(eq(BN), eq(100L), eq(200L), anyLong())).thenReturn(false);
+        when(parkOrderDao.update(isNull(), any())).thenReturn(1);   //修正更新
+
+        Long orderId = parkSessionService.exit(100L, BN);
+
+        assertThat(orderId).isEqualTo(200L);   //不挡出场
+        ArgumentCaptor<ParkOrderEntity> captor = ArgumentCaptor.forClass(ParkOrderEntity.class);
+        verify(parkOrderDao).insert(captor.capture());
+        assertThat(captor.getValue().getDiscountFen()).isEqualTo(200L);   //先带减免写订单
+        verify(parkOrderDao).update(isNull(), any());                     //再修正为无减免
     }
 
     // ---------- helpers ----------

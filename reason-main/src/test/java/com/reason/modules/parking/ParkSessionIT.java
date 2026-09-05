@@ -1,6 +1,11 @@
 package com.reason.modules.parking;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.reason.modules.charging.dao.BenefitRecordDao;
+import com.reason.modules.charging.dao.ChargingPileDao;
+import com.reason.modules.charging.entity.BenefitRecordEntity;
+import com.reason.modules.charging.entity.ChargingPileEntity;
+import com.reason.modules.charging.service.ChargeSessionService;
 import com.reason.modules.parking.dao.ParkOrderDao;
 import com.reason.modules.parking.dao.ParkSessionDao;
 import com.reason.modules.parking.dao.ParkSpaceDao;
@@ -56,6 +61,15 @@ class ParkSessionIT {
     private static final String SPACE_NO_CYCLE = "IT-CYCLE";
     /** 出场结算用例车位编号前缀 */
     private static final String SPACE_NO_SETTLE = "IT-SETTLE";
+    /** 跨方免停权益端到端用例前缀 */
+    private static final String SPACE_NO_BENEFIT = "IT-BENEFIT";
+    private static final String PILE_NO_BENEFIT = "IT-PILE-BENEFIT";
+    /** 权益错配用例前缀 */
+    private static final String SPACE_NO_MISMATCH = "IT-MISMATCH";
+    private static final String PILE_NO_MISMATCH = "IT-PILE-MISMATCH";
+    /** 并发核销用例前缀 */
+    private static final String SPACE_NO_CONCURREDEEM = "IT-DEEM";
+    private static final String PILE_NO_CONCURREDEEM = "IT-PILE-DEEM";
 
     @Container
     static final MySQLContainer<?> MYSQL = new MySQLContainer<>(DockerImageName.parse("mysql:8.0.36"))
@@ -102,6 +116,12 @@ class ParkSessionIT {
     private ParkSessionDao parkSessionDao;
     @Autowired
     private ParkOrderDao parkOrderDao;
+    @Autowired
+    private ChargeSessionService chargeSessionService;
+    @Autowired
+    private ChargingPileDao chargingPileDao;
+    @Autowired
+    private BenefitRecordDao benefitRecordDao;
 
     @Test
     @DisplayName("同车位并发入场：仅一个成功（条件更新行锁语义的真库验证）")
@@ -207,6 +227,123 @@ class ParkSessionIT {
         assertThat(again).isNotNull();
     }
 
+    // ---------- 跨方免停权益端到端（M1 验收 2/3 落点，真库验证） ----------
+
+    private String benefitNoOf(String plateNo) {
+        List<BenefitRecordEntity> list = benefitRecordDao.selectList(new LambdaQueryWrapper<BenefitRecordEntity>()
+                .eq(BenefitRecordEntity::getPlateNo, plateNo)
+                .orderByDesc(BenefitRecordEntity::getBenefitId)
+                .last("LIMIT 1"));
+        assertThat(list).hasSize(1);
+        return list.get(0).getBenefitNo();
+    }
+
+    @Test
+    @DisplayName("停车→充电→出场核销免停：订单减免快照 + 权益置已核销 + 锚定一致")
+    void 跨方免停全链路核销() {
+        ParkSpaceEntity space = insertSpace(SPACE_NO_BENEFIT);
+        insertPile(PILE_NO_BENEFIT, space.getSpaceId());
+        Long parkSessionId = parkSessionService.entry(SPACE_NO_BENEFIT, "浙B12345");
+        //停车时长 2 小时：应收 400 分（回拨时间制造时长）
+        ParkSessionEntity parked = parkSessionDao.selectById(parkSessionId);
+        parked.setSessionEntryTime(parked.getSessionEntryTime() - 7200);
+        parkSessionDao.updateById(parked);
+
+        Long chargeSessionId = chargeSessionService.start(PILE_NO_BENEFIT, "浙B12345");
+        chargeSessionService.finish(chargeSessionId, 30_000L);
+        String benefitNo = benefitNoOf("浙B12345");
+
+        Long orderId = parkSessionService.exit(parkSessionId, benefitNo);
+
+        //停车订单：应收 400 − 免停 1h 折算 200 = 实付 200（快照完整）
+        ParkOrderEntity order = parkOrderDao.selectById(orderId);
+        assertThat(order.getAmountFen()).isEqualTo(400L);
+        assertThat(order.getDiscountFen()).isEqualTo(200L);
+        assertThat(order.getBenefitNo()).isEqualTo(benefitNo);
+        //权益：可用 → 已核销，回写核销会话/订单
+        BenefitRecordEntity benefit = benefitRecordDao.selectList(new LambdaQueryWrapper<BenefitRecordEntity>()
+                .eq(BenefitRecordEntity::getBenefitNo, benefitNo)).get(0);
+        assertThat(benefit.getBenefitState()).isEqualTo(1);
+        assertThat(benefit.getRedeemSessionId()).isEqualTo(parkSessionId);
+        assertThat(benefit.getRedeemOrderId()).isEqualTo(orderId);
+        assertThat(benefit.getRedeemTime()).isNotNull();
+        //充电订单独立闭环（两段费率 36 元）
+        assertThat(order.getSpaceNo()).isEqualTo(SPACE_NO_BENEFIT);
+    }
+
+    @Test
+    @DisplayName("权益错配：B 车出场携带 A 车权益 → 无减免结算，权益保持可用（防凭证盗用）")
+    void 权益锚定错配不减免() {
+        ParkSpaceEntity spaceA = insertSpace(SPACE_NO_MISMATCH + "-A");
+        insertPile(PILE_NO_MISMATCH + "-A", spaceA.getSpaceId());
+        Long sessionA = parkSessionService.entry(SPACE_NO_MISMATCH + "-A", "浙B11111");
+        Long chargeId = chargeSessionService.start(PILE_NO_MISMATCH + "-A", "浙B11111");
+        chargeSessionService.finish(chargeId, 20_000L);
+        String benefitNo = benefitNoOf("浙B11111");
+
+        //B 车在另一车位出场（盗用 A 的权益码）
+        insertSpace(SPACE_NO_MISMATCH + "-B");
+        Long sessionB = parkSessionService.entry(SPACE_NO_MISMATCH + "-B", "浙B22222");
+        ParkSessionEntity parkedB = parkSessionDao.selectById(sessionB);
+        parkedB.setSessionEntryTime(parkedB.getSessionEntryTime() - 3600);
+        parkSessionDao.updateById(parkedB);
+        Long orderIdB = parkSessionService.exit(sessionB, benefitNo);
+
+        //B 无减免；权益仍可用（未被错配消费）
+        ParkOrderEntity orderB = parkOrderDao.selectById(orderIdB);
+        assertThat(orderB.getDiscountFen()).isZero();
+        assertThat(orderB.getBenefitNo()).isNull();
+        BenefitRecordEntity benefit = benefitRecordDao.selectList(new LambdaQueryWrapper<BenefitRecordEntity>()
+                .eq(BenefitRecordEntity::getBenefitNo, benefitNo)).get(0);
+        assertThat(benefit.getBenefitState()).isZero();
+    }
+
+    @Test
+    @DisplayName("同会话并发出场带权益：恰好一个成功减免，另一个被会话判官拒绝（核销仅一次）")
+    void 并发出场核销仅一次() throws Exception {
+        ParkSpaceEntity space = insertSpace(SPACE_NO_CONCURREDEEM);
+        insertPile(PILE_NO_CONCURREDEEM, space.getSpaceId());
+        Long parkSessionId = parkSessionService.entry(SPACE_NO_CONCURREDEEM, "浙B33333");
+        ParkSessionEntity parked = parkSessionDao.selectById(parkSessionId);
+        parked.setSessionEntryTime(parked.getSessionEntryTime() - 3600);
+        parkSessionDao.updateById(parked);
+        Long chargeId = chargeSessionService.start(PILE_NO_CONCURREDEEM, "浙B33333");
+        chargeSessionService.finish(chargeId, 10_000L);
+        String benefitNo = benefitNoOf("浙B33333");
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch go = new CountDownLatch(1);
+        List<Long> success = Collections.synchronizedList(new ArrayList<>());
+        List<String> failed = Collections.synchronizedList(new ArrayList<>());
+        for (int i = 0; i < 2; i++) {
+            pool.submit(() -> {
+                ready.countDown();
+                try {
+                    go.await(10, TimeUnit.SECONDS);
+                    success.add(parkSessionService.exit(parkSessionId, benefitNo));
+                } catch (RuntimeException e) {
+                    failed.add(e.getMessage());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+        }
+        go.countDown();
+        pool.shutdown();
+        pool.awaitTermination(20, TimeUnit.SECONDS);
+
+        //恰一方成功（会话判官），另一方收到业务异常
+        assertThat(success).hasSize(1);
+        assertThat(failed).hasSize(1);
+        assertThat(failed.get(0)).contains("状态已变更");
+        //权益只被核销一次（无重复减免）
+        BenefitRecordEntity benefit = benefitRecordDao.selectList(new LambdaQueryWrapper<BenefitRecordEntity>()
+                .eq(BenefitRecordEntity::getBenefitNo, benefitNo)).get(0);
+        assertThat(benefit.getBenefitState()).isEqualTo(1);
+        assertThat(benefit.getRedeemOrderId()).isEqualTo(success.get(0));
+    }
+
     private ParkSpaceEntity insertSpace(String spaceNo) {
         long now = System.currentTimeMillis() / 1000;
         ParkSpaceEntity space = new ParkSpaceEntity();
@@ -217,5 +354,16 @@ class ParkSessionIT {
         space.setSpaceUpdatetime(now);
         parkSpaceDao.insert(space);
         return space;
+    }
+
+    private void insertPile(String pileNo, Long spaceId) {
+        long now = System.currentTimeMillis() / 1000;
+        ChargingPileEntity pile = new ChargingPileEntity();
+        pile.setPileNo(pileNo);
+        pile.setSpaceId(spaceId);
+        pile.setPileState(0);
+        pile.setPileCreator(1L);
+        pile.setPileCreatetime(now);
+        chargingPileDao.insert(pile);
     }
 }

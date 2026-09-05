@@ -7,6 +7,8 @@ import com.reason.common.exception.RRException;
 import com.reason.common.utils.MapUtils;
 import com.reason.common.utils.PageUtils;
 import com.reason.common.utils.Query;
+import com.reason.modules.charging.enums.BenefitState;
+import com.reason.modules.charging.service.ChargingBenefitService;
 import com.reason.modules.parking.dao.FeeRuleDao;
 import com.reason.modules.parking.dao.ParkOrderDao;
 import com.reason.modules.parking.dao.ParkSessionDao;
@@ -58,6 +60,12 @@ public class ParkSessionServiceImpl extends ServiceImpl<ParkSessionDao, ParkSess
 
     @Autowired
     private ParkOrderDao parkOrderDao;
+
+    /**
+     * 跨上下文凭证能力（出场核销免停权益），不直连 benefit_record 表——凭证化边界
+     */
+    @Autowired
+    private ChargingBenefitService chargingBenefitService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -156,8 +164,13 @@ public class ParkSessionServiceImpl extends ServiceImpl<ParkSessionDao, ParkSess
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public Long exit(Long sessionId) {
+        return exit(sessionId, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long exit(Long sessionId, String benefitNo) {
         if (sessionId == null) {
             throw new RRException("会话id不能为空");
         }
@@ -186,7 +199,7 @@ public class ParkSessionServiceImpl extends ServiceImpl<ParkSessionDao, ParkSess
             throw new RRException("会话状态已变更，请刷新后重试：" + sessionId);
         }
 
-        //4.读启用规则并生成订单快照（本事务已是会话终态化的唯一胜者）
+        //4.读启用规则并生成应收（本事务已是会话终态化的唯一胜者）
         //  启用规则 M0 约定仅一条；selectList 防御而非 selectOne（多条时 selectOne 抛 TooManyResults）
         List<FeeRuleEntity> enabledRules = feeRuleDao.selectList(new LambdaQueryWrapper<FeeRuleEntity>()
                 .eq(FeeRuleEntity::getRuleState, FeeRuleState.ENABLED.getCode()));
@@ -196,6 +209,30 @@ public class ParkSessionServiceImpl extends ServiceImpl<ParkSessionDao, ParkSess
         FeeRuleEntity rule = enabledRules.get(0);   //多策略选择（取默认/最优）归 M2 规则引擎
 
         long durationSeconds = now - session.getSessionEntryTime();
+        long amountFen = FeeCalculator.calcAmountFen(durationSeconds, rule.getUnitPriceFen());
+
+        //5.跨方权益预检与减免折算（不可信凭证：任何失败分支都按无减免出场，不挡车）
+        String normalizedBenefitNo = (benefitNo == null || benefitNo.trim().isEmpty()) ? null : benefitNo.trim();
+        long discountFen = 0;
+        if (normalizedBenefitNo != null) {
+            ChargingBenefitService.BenefitView benefit = chargingBenefitService.check(normalizedBenefitNo);
+            if (benefit == null) {
+                log.warn("出场携带的权益码不存在，按无减免结算：sessionId={}, benefitNo={}", sessionId, normalizedBenefitNo);
+            } else if (benefit.state() != BenefitState.AVAILABLE.getCode()) {
+                log.warn("出场携带的权益非可用态（已核销/已过期），按无减免结算：sessionId={}, benefitNo={}", sessionId, normalizedBenefitNo);
+            } else if (benefit.expireTime() <= now) {
+                //调度 job 未跑到的窗口内兜底：到期即失效（状态置过期归 job/下次预检）
+                log.warn("出场携带的权益已到期，按无减免结算：sessionId={}, benefitNo={}", sessionId, normalizedBenefitNo);
+            } else if (benefit.anchorSessionId() != sessionId) {
+                log.warn("出场携带的权益锚定错配，按无减免结算：sessionId={}, benefitNo={}", sessionId, normalizedBenefitNo);
+            } else {
+                //减免 = floor(免停秒 × 单价 / 3600)，且不超过应收（min 天然保证实付 ≥ 0）
+                long rawDiscount = benefit.freeSeconds() * (long) rule.getUnitPriceFen() / 3600L;
+                discountFen = Math.min(rawDiscount, amountFen);
+            }
+        }
+
+        //6.生成订单快照（应收/减免/权益码全部定格；无减免订单 discount_fen 走 DB 默认 0）
         ParkOrderEntity order = new ParkOrderEntity();
         order.setSessionId(sessionId);
         order.setPlateNo(session.getPlateNo());
@@ -204,12 +241,34 @@ public class ParkSessionServiceImpl extends ServiceImpl<ParkSessionDao, ParkSess
         order.setOrderExitTime(now);
         order.setDurationMinutes(FeeCalculator.calcDurationMinutes(durationSeconds));
         order.setUnitPriceFen(rule.getUnitPriceFen());
-        order.setAmountFen(FeeCalculator.calcAmountFen(durationSeconds, rule.getUnitPriceFen()));
+        order.setAmountFen(amountFen);
+        if (discountFen > 0) {
+            order.setDiscountFen(discountFen);
+            order.setBenefitNo(normalizedBenefitNo);
+        }
         order.setOrderState(0);
         order.setOrderCreatetime(now);
         parkOrderDao.insert(order);
 
-        //5.释放车位（条件更新 占用→空闲）；行数 0 = 会话与车位状态不一致 → 回滚暴露
+        //7.凭证核销（凭证判官，条件更新）：预检通过且减免>0 才发起；
+        //  0 行 = 预检后并发窗口内被其他出场抢先核销（双花败方）→ 修正订单快照按无减免收尾 + 告警
+        if (discountFen > 0) {
+            boolean redeemed = chargingBenefitService.redeem(normalizedBenefitNo, sessionId, order.getOrderId(), now);
+            if (!redeemed) {
+                log.warn("凭证核销败方（并发双花），修正订单为无减免：sessionId={}, benefitNo={}, orderId={}",
+                        sessionId, normalizedBenefitNo, order.getOrderId());
+                int fixRows = parkOrderDao.update(null, new LambdaUpdateWrapper<ParkOrderEntity>()
+                        .eq(ParkOrderEntity::getOrderId, order.getOrderId())
+                        .set(ParkOrderEntity::getDiscountFen, 0)
+                        .set(ParkOrderEntity::getBenefitNo, null));
+                if (fixRows == 0) {
+                    log.error("凭证核销败方且订单修正失败（数据异常）：orderId={}", order.getOrderId());
+                    throw new RRException("结算数据异常，请联系管理员：" + sessionId);
+                }
+            }
+        }
+
+        //8.释放车位（条件更新 占用→空闲）；行数 0 = 会话与车位状态不一致 → 回滚暴露
         int releaseRows = parkSpaceDao.update(null, new LambdaUpdateWrapper<ParkSpaceEntity>()
                 .eq(ParkSpaceEntity::getSpaceId, session.getSpaceId())
                 .eq(ParkSpaceEntity::getSpaceState, ParkSpaceState.OCCUPIED.getCode())

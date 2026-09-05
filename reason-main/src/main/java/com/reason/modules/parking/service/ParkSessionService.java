@@ -33,13 +33,26 @@ public interface ParkSessionService {
     void cancel(Long sessionId, String cancelReason);
 
     /**
-     * 出场结算：会话终态化 + 算费生成订单快照 + 释放车位（单事务，判官前置）
+     * 出场结算（不携带免停权益）：等同 {@link #exit(Long, String)} 的 benefitNo=null 路径
+     */
+    Long exit(Long sessionId);
+
+    /**
+     * 出场结算（可携带跨方免停权益码）：会话终态化 + 算费生成订单快照 + 凭证核销减免 + 释放车位（单事务，判官前置）
+     *
+     * <p>减免口径（M1-1 定稿）：应收原公式不变（FeeCalculator 未动）；减免 =
+     * {@code floor(freeSeconds × 单价 / 3600)} 且不超过应收；amount_fen 保持应收原义，
+     * discount_fen/benefit_no 快照减免与凭证，实付 = 应收 − 减免可推导不入库。</p>
+     *
+     * <p>核销失败（凭证不存在/已核销/过期/锚定错配/并发双花败方）→ 按无减免结算 + 告警，不挡出场；
+     * 会话判官与凭证判官构成双判官，出场事务内同库同事务原子。</p>
      *
      * @param sessionId 会话 id
+     * @param benefitNo 免停权益码（可选；空/无效不影响出场结算）
      * @return 订单 id
      * @throws com.reason.common.exception.RRException 会话不存在/非进行中（非法迁移）/无启用规则/状态已被并发变更/车位状态异常
      */
-    Long exit(Long sessionId);
+    Long exit(Long sessionId, String benefitNo);
 
     /**
      * 查询指定车位的进行中停车会话（跨上下文只读能力：charging 域充电开始锚定用）
