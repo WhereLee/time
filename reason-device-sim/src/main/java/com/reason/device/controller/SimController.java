@@ -68,6 +68,11 @@ public class SimController {
                         resp.put("msg", "设备忙：已在会话中 sessionId=" + device.getSessionId());
                         return ResponseEntity.ok(resp);
                     }
+                    if (device.getSpaceNo() == null) {
+                        resp.put("code", 400);
+                        resp.put("msg", "设备无绑定车位，不支持 entry（闸机/位检入场语义 B 块接入）");
+                        return ResponseEntity.badRequest().body(resp);
+                    }
                     String pn = plateNo != null ? plateNo : Plates.pick(now);
                     Long sessionId = reporter.reportEntry(device.getSpaceNo(), pn);
                     device.bindSession(sessionId, pn, now);
@@ -159,7 +164,8 @@ public class SimController {
             Map<String, Object> d = new LinkedHashMap<>();
             d.put("deviceNo", device.getDeviceNo());
             d.put("spaceNo", device.getSpaceNo());
-            d.put("deviceType", device.getDeviceType());
+            d.put("deviceType", device.getDeviceType() == null ? null : device.getDeviceType().name());
+            d.put("online", device.isOnline());
             d.put("state", device.isIdle() ? "IDLE" : "OCCUPIED");
             d.put("sessionId", device.getSessionId());
             d.put("plateNo", device.getPlateNo());
@@ -170,5 +176,35 @@ public class SimController {
         resp.put("data", list);
         resp.put("autoEnabled", properties.getAuto().isEnable());
         return resp;
+    }
+
+    /**
+     * 故障注入：设备置离线（心跳上报 online=false，main 台账随之离线）
+     */
+    @PostMapping("/device/offline/{deviceNo}")
+    public ResponseEntity<Map<String, Object>> offline(@PathVariable("deviceNo") String deviceNo) {
+        return setOnline(deviceNo, false);
+    }
+
+    /**
+     * 故障恢复：设备置回在线
+     */
+    @PostMapping("/device/online/{deviceNo}")
+    public ResponseEntity<Map<String, Object>> online(@PathVariable("deviceNo") String deviceNo) {
+        return setOnline(deviceNo, true);
+    }
+
+    private ResponseEntity<Map<String, Object>> setOnline(String deviceNo, boolean online) {
+        SimDevice device = registry.findByDeviceNo(deviceNo);
+        Map<String, Object> resp = new LinkedHashMap<>();
+        if (device == null) {
+            resp.put("code", 404);
+            resp.put("msg", "设备不存在：" + deviceNo);
+            return ResponseEntity.badRequest().body(resp);
+        }
+        device.setOnline(online);
+        resp.put("code", 0);
+        resp.put("msg", (online ? "恢复在线" : "置为离线") + "：" + deviceNo);
+        return ResponseEntity.ok(resp);
     }
 }

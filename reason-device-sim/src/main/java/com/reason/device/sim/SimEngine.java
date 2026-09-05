@@ -34,6 +34,10 @@ public class SimEngine {
         }
         long now = System.currentTimeMillis() / 1000;
         for (SimDevice device : registry.all()) {
+            //A 块起只驱动停车演示设备：位检/闸机/桩是通道与传感器语义，不自己"开车入场"
+            if (!device.isParkDevice()) {
+                continue;
+            }
             if (device.isIdle()) {
                 //空闲：尝试入场（车位已被其他会话占用时业务端拒绝，debug 日志留痕即模拟真实抢占）
                 try {

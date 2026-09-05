@@ -26,26 +26,55 @@ reason:
     access-token: sim-device-token-2026
     # reason-main 设备接入服务地址（本地双进程联调；云部署改为内网地址）
     parking-api-base-url: http://127.0.0.1:8200/api
-    # 模拟设备清单（deviceNo 与绑定车位编号；充电桩事件 start/finish/cancel）
+    # 手写设备清单：停车演示设备（entry/exit 直报车位，M1 语义，B 块后退役）+ 出入口闸机 6（无车位绑定）
     devices:
       - deviceNo: DEV-001
         spaceNo: A-001
-        deviceType: 地锁型
+        deviceType: PARK_DEVICE
       - deviceNo: DEV-002
         spaceNo: A-002
-        deviceType: 升降杆型
+        deviceType: PARK_DEVICE
       - deviceNo: DEV-003
         spaceNo: A-003
-        deviceType: 升降杆型
-      - deviceNo: PILE-001
-        spaceNo: B-001
-        deviceType: 充电桩
-      - deviceNo: PILE-002
-        spaceNo: B-002
-        deviceType: 充电桩
-      - deviceNo: PILE-003
-        spaceNo: B-003
-        deviceType: 充电桩
+        deviceType: PARK_DEVICE
+      - deviceNo: GATE-E-IN
+        deviceType: ENTRY_GATE
+      - deviceNo: GATE-E-OUT
+        deviceType: EXIT_GATE
+      - deviceNo: GATE-S-IN
+        deviceType: ENTRY_GATE
+      - deviceNo: GATE-S-OUT
+        deviceType: EXIT_GATE
+      - deviceNo: GATE-W-IN
+        deviceType: ENTRY_GATE
+      - deviceNo: GATE-W-OUT
+        deviceType: EXIT_GATE
+    # 批量区段：按车位区段展开位检（每车位 1 台）与充电桩（30 台绑 C 区），与 db/08 资产同构
+    sections:
+      - deviceType: SENSOR
+        noPrefix: SENSOR-A-
+        area: A
+        from: 1
+        to: 140
+      - deviceType: SENSOR
+        noPrefix: SENSOR-B-
+        area: B
+        from: 1
+        to: 130
+      - deviceType: SENSOR
+        noPrefix: SENSOR-C-
+        area: C
+        from: 1
+        to: 30
+      - deviceType: CHARGING_PILE
+        noPrefix: PILE-
+        area: C
+        from: 1
+        to: 30
+    # 心跳批量上报（每周期聚合全部设备在线态；main 端 /device/heartbeat 就绪后置 true 开启）
+    heartbeat:
+      enabled: false
+      interval-seconds: 10
     # 自动剧本：true 时按剧本循环上报（演示满停车场动态）；false 时由 /sim/event 手工触发（联调可控）
     auto:
       enable: false
