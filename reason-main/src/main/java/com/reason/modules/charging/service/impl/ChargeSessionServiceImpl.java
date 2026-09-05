@@ -161,7 +161,7 @@ public class ChargeSessionServiceImpl extends ServiceImpl<ChargeSessionDao, Char
                 .eq(ChargeSessionEntity::getSessionState, ChargeSessionState.CHARGING.getCode())
                 .set(ChargeSessionEntity::getSessionState, ChargeSessionState.CANCELLED.getCode())
                 .set(ChargeSessionEntity::getSessionEndTime, now)
-                .set(ChargeSessionEntity::getCancelReason, cancelReason)
+                .set(cancelReason != null, ChargeSessionEntity::getCancelReason, cancelReason)
                 .set(ChargeSessionEntity::getSessionUpdatetime, now));
         if (finishRows == 0) {
             throw new RRException("会话状态已变更，请刷新后重试：" + sessionId);

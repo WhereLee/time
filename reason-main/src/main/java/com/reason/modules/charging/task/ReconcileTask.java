@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -73,41 +74,45 @@ public class ReconcileTask implements ITask {
                 .collect(Collectors.toList());
 
         //②核销完整性：已核销权益必须命中停车订单且权益码/减免一致
-        int redeemMissing = 0;
-        int redeemMismatch = 0;
+        List<String> redeemMissingDiffs = new ArrayList<>();
+        List<String> redeemMismatchDiffs = new ArrayList<>();
         for (BenefitRecordEntity b : benefits) {
             if (b.getBenefitState() != BenefitState.REDEEMED.getCode()) {
                 continue;
             }
             ParkOrderEntity po = b.getRedeemOrderId() == null ? null : parkOrderById.get(b.getRedeemOrderId());
             if (po == null) {
-                redeemMissing++;
+                redeemMissingDiffs.add("benefitNo=" + b.getBenefitNo() + ", redeemOrderId=" + b.getRedeemOrderId()
+                        + ", redeemSessionId=" + b.getRedeemSessionId());
             } else if (b.getBenefitNo() == null || !b.getBenefitNo().equals(po.getBenefitNo())
                     || po.getDiscountFen() == null || po.getDiscountFen() <= 0) {
-                redeemMismatch++;
+                redeemMismatchDiffs.add("benefitNo=" + b.getBenefitNo() + ", orderId=" + po.getOrderId()
+                        + ", orderBenefitNo=" + po.getBenefitNo() + ", orderDiscountFen=" + po.getDiscountFen());
             }
         }
 
         //③快照一致性：停车订单带减免必须有对应已核销权益
-        int snapshotMismatch = 0;
+        List<String> snapshotMismatchDiffs = new ArrayList<>();
         for (ParkOrderEntity po : parkOrders) {
             if (po.getDiscountFen() == null || po.getDiscountFen() <= 0) {
                 continue;
             }
             BenefitRecordEntity b = po.getBenefitNo() == null ? null : benefitByNo.get(po.getBenefitNo());
             if (b == null || b.getBenefitState() != BenefitState.REDEEMED.getCode()) {
-                snapshotMismatch++;
+                snapshotMismatchDiffs.add("orderId=" + po.getOrderId() + ", benefitNo=" + po.getBenefitNo()
+                        + ", benefitState=" + (b == null ? null : b.getBenefitState()));
             }
         }
 
         //差异输出（超出上限截断打印，计数完整）
-        printDiff("签发完整性：电量>0 订单未签发权益", missingBenefit.stream()
+        printDiff("跨方对账①签发完整性：电量>0 订单未签发权益", missingBenefit.stream()
                 .map(o -> "orderId=" + o.getOrderId() + ", plate=" + o.getPlateNo()).collect(Collectors.toList()));
-        log.warn("跨方对账② 核销完整性差异：已核销权益无停车订单 {} 条，订单快照不匹配 {} 条", redeemMissing, redeemMismatch);
-        log.warn("跨方对账③ 快照一致性差异：停车订单带减免但权益非已核销 {} 条", snapshotMismatch);
+        printDiff("跨方对账②核销完整性：已核销权益无停车订单", redeemMissingDiffs);
+        printDiff("跨方对账②核销完整性：订单快照不匹配（权益码/减免缺失）", redeemMismatchDiffs);
+        printDiff("跨方对账③快照一致性：停车订单带减免但权益非已核销", snapshotMismatchDiffs);
         log.info("跨方对账完成：充电订单 {} / 权益 {} / 停车订单 {}，差异①②③=({},{}+{},{})，耗时 {}s",
                 chargeOrders.size(), benefits.size(), parkOrders.size(),
-                missingBenefit.size(), redeemMissing, redeemMismatch, snapshotMismatch,
+                missingBenefit.size(), redeemMissingDiffs.size(), redeemMismatchDiffs.size(), snapshotMismatchDiffs.size(),
                 System.currentTimeMillis() / 1000 - start);
     }
 
@@ -116,6 +121,6 @@ public class ReconcileTask implements ITask {
             return;
         }
         Set<String> shown = new HashSet<>(diffs.subList(0, Math.min(diffs.size(), MAX_PRINT)));
-        log.warn("跨方对账① {}：共 {} 条，示例 {}", title, diffs.size(), shown);
+        log.warn("{}：共 {} 条，示例 {}", title, diffs.size(), shown);
     }
 }
