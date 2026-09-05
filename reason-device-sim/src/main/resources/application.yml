@@ -71,9 +71,9 @@ reason:
         area: C
         from: 1
         to: 30
-    # 心跳批量上报（每周期聚合全部设备在线态；main 端 /device/heartbeat 就绪后置 true 开启）
+    # 心跳批量上报（每周期聚合全部设备在线态；main 端 /device/heartbeat 已就绪，默认开启；心跳失败仅告警抑制不中断）
     heartbeat:
-      enabled: false
+      enabled: true
       interval-seconds: 10
     # 自动剧本：true 时按剧本循环上报（演示满停车场动态）；false 时由 /sim/event 手工触发（联调可控）
     auto:

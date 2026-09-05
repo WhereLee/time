@@ -78,6 +78,7 @@ class ParkSessionIT {
             .withPassword("root")
             //仓库根 db/ 脚本挂载进 entrypoint 初始化目录：容器创建后按文件名序自动建库导入
             //01 基线 + 02 停车域 + 03 停车授权 + 04 charging（含 park_order 减免列，与本 IT 表结构一致）+ 05 充电授权
+            //+ 06 业务 job 注册 + 08 设备资产（300 车位商超形态，验证幂等与资产存在）+ 09 设备巡检 job + 10 设备管理菜单/留痕表
             .withCopyFileToContainer(
                     MountableFile.forHostPath("../db/reason-faster.sql"),
                     "/docker-entrypoint-initdb.d/01-reason-faster.sql")
@@ -95,7 +96,16 @@ class ParkSessionIT {
                     "/docker-entrypoint-initdb.d/05-charging-role-menu-grant.sql")
             .withCopyFileToContainer(
                     MountableFile.forHostPath("../db/06-业务定时任务注册.sql"),
-                    "/docker-entrypoint-initdb.d/06-business-jobs.sql");
+                    "/docker-entrypoint-initdb.d/06-business-jobs.sql")
+            .withCopyFileToContainer(
+                    MountableFile.forHostPath("../db/08-停车场设备资产.sql"),
+                    "/docker-entrypoint-initdb.d/08-device-assets.sql")
+            .withCopyFileToContainer(
+                    MountableFile.forHostPath("../db/09-设备在线巡检job注册.sql"),
+                    "/docker-entrypoint-initdb.d/09-device-scan-job.sql")
+            .withCopyFileToContainer(
+                    MountableFile.forHostPath("../db/10-设备管理.sql"),
+                    "/docker-entrypoint-initdb.d/10-device-manage.sql");
 
     @Container
     static final GenericContainer<?> REDIS =
