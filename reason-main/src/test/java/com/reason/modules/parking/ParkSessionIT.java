@@ -247,9 +247,11 @@ class ParkSessionIT {
         ParkSpaceEntity space = insertSpace(SPACE_NO_BENEFIT);
         insertPile(PILE_NO_BENEFIT, space.getSpaceId());
         Long parkSessionId = parkSessionService.entry(SPACE_NO_BENEFIT, "浙B12345");
-        //停车时长 2 小时：应收 400 分（回拨时间制造时长）
+        //停车时长制造：回拨 6600s（1h50m）——按小时向上取整计费，实际时长 6601~7200s
+        //均落在 2h 档应收 400（ceil 边界在 7201s）。注意勿回拨整 7200s：回拨后到出场前
+        //还有 start/finish 两轮流程，秒级漂移 ≥1s 即跨入 3h 档 → CI 慢环境确定性失败
         ParkSessionEntity parked = parkSessionDao.selectById(parkSessionId);
-        parked.setSessionEntryTime(parked.getSessionEntryTime() - 7200);
+        parked.setSessionEntryTime(parked.getSessionEntryTime() - 6600);
         parkSessionDao.updateById(parked);
 
         Long chargeSessionId = chargeSessionService.start(PILE_NO_BENEFIT, "浙B12345");
@@ -336,10 +338,13 @@ class ParkSessionIT {
         pool.shutdown();
         pool.awaitTermination(20, TimeUnit.SECONDS);
 
-        //恰一方成功（会话判官），另一方收到业务异常
+        //恰一方成功（会话判官），另一方被拒——败方文案存在两种合法形态：
+        //a) 判官 0 行 → "状态已变更"（败方 selectById 读到进行中，update 晚于胜方提交）
+        //b) 守卫拒绝 → "非法…迁移"（败方 selectById 晚于胜方提交，读到已结束终态）
+        //两条路径都是并发正确性的一部分（核销仅发生一次），断言须同时容错
         assertThat(success).hasSize(1);
         assertThat(failed).hasSize(1);
-        assertThat(failed.get(0)).contains("状态已变更");
+        assertThat(failed.get(0)).containsAnyOf("状态已变更", "非法");
         //权益只被核销一次（无重复减免）
         BenefitRecordEntity benefit = benefitRecordDao.selectList(new LambdaQueryWrapper<BenefitRecordEntity>()
                 .eq(BenefitRecordEntity::getBenefitNo, benefitNo)).get(0);
