@@ -1,15 +1,22 @@
 package com.reason.modules.device.service;
 
+import com.reason.common.utils.PageUtils;
+import com.reason.modules.device.form.DeviceOnlineForm;
+
 import java.util.List;
 import java.util.Map;
 
 /**
- * 设备在线台账服务（心跳批量更新 / 未知设备告警）
+ * 设备在线台账服务（心跳批量更新 / 未知设备告警 / 管理端台账分页）
  *
  * @date 2026-09-06
  */
 public interface DeviceOnlineService {
 
+    /**
+     * 管理端设备台账分页（编号模糊/类型/在线态/绑定对象筛选）
+     */
+    PageUtils queryPage(DeviceOnlineForm form);
     /**
      * 处理一批心跳上报（网关聚合语义，单次批量）
      *

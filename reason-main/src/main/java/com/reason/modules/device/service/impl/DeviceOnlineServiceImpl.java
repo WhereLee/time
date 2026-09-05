@@ -1,10 +1,19 @@
 package com.reason.modules.device.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.reason.common.utils.Constant;
+import com.reason.common.utils.MapUtils;
+import com.reason.common.utils.PageUtils;
+import com.reason.common.utils.Query;
 import com.reason.modules.device.dao.DeviceOnlineDao;
+import com.reason.modules.device.entity.DeviceOnlineEntity;
+import com.reason.modules.device.form.DeviceOnlineForm;
 import com.reason.modules.device.service.DeviceOnlineService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -33,6 +42,19 @@ public class DeviceOnlineServiceImpl implements DeviceOnlineService {
 
     public DeviceOnlineServiceImpl(DeviceOnlineDao deviceOnlineDao) {
         this.deviceOnlineDao = deviceOnlineDao;
+    }
+
+    @Override
+    public PageUtils queryPage(DeviceOnlineForm form) {
+        IPage<DeviceOnlineEntity> page = new Query<DeviceOnlineEntity>().getPage(new MapUtils()
+                .put(Constant.PAGE, form.getPage()).put(Constant.LIMIT, form.getLimit()));
+        deviceOnlineDao.selectPage(page, new LambdaQueryWrapper<DeviceOnlineEntity>()
+                .like(StringUtils.hasText(form.getDeviceNo()), DeviceOnlineEntity::getDeviceNo, form.getDeviceNo())
+                .eq(form.getDeviceType() != null, DeviceOnlineEntity::getDeviceType, form.getDeviceType())
+                .eq(form.getDeviceState() != null, DeviceOnlineEntity::getDeviceState, form.getDeviceState())
+                .like(StringUtils.hasText(form.getBindTarget()), DeviceOnlineEntity::getBindTarget, form.getBindTarget())
+                .orderByAsc(DeviceOnlineEntity::getDeviceId));
+        return new PageUtils(page);
     }
 
     @Override
