@@ -31,6 +31,11 @@ public class SimDevice {
         return sessionId == null;
     }
 
+    /** 是否充电桩设备（事件通道：start/finish/cancel 走 /device/charging/*） */
+    public boolean isCharger() {
+        return deviceType != null && deviceType.contains("充电");
+    }
+
     /** 绑定入场上报结果（持有会话句柄） */
     public void bindSession(Long sessionId, String plateNo, long nowSeconds) {
         this.sessionId = sessionId;

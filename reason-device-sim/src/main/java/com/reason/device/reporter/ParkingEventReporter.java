@@ -57,6 +57,31 @@ public class ParkingEventReporter {
                 Map.of("deviceNo", deviceNo, "sessionId", sessionId, "cancelReason", reason));
     }
 
+    /**
+     * 充电开始上报：返回充电会话 id（桩持有句柄供结束/取消使用）
+     */
+    public Long reportChargeStart(String pileNo, String plateNo) {
+        JsonNode resp = post("/device/charging/start", Map.of("pileNo", pileNo, "plateNo", plateNo));
+        return extractDataId(resp, "充电开始上报");
+    }
+
+    /**
+     * 充电结束上报：返回充电订单 id
+     */
+    public Long reportChargeFinish(String deviceNo, Long sessionId, long energyWh) {
+        JsonNode resp = post("/device/charging/finish",
+                Map.of("deviceNo", deviceNo, "sessionId", sessionId, "energyWh", energyWh));
+        return extractDataId(resp, "充电结束上报");
+    }
+
+    /**
+     * 充电取消上报
+     */
+    public void reportChargeCancel(String deviceNo, Long sessionId, String reason) {
+        post("/device/charging/cancel",
+                Map.of("deviceNo", deviceNo, "sessionId", sessionId, "cancelReason", reason));
+    }
+
     private JsonNode post(String path, Map<String, Object> body) {
         String url = properties.getParkingApiBaseUrl() + path;
         JsonNode resp = restClient.post().uri(url)

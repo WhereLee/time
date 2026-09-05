@@ -19,11 +19,13 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 模拟控制台（人工联调触发入口，M0 默认手控模式）
  *
- * <p>POST /sim/event/{deviceNo}/{event}：单步触发一台设备上报（entry/exit/cancel）；
+ * <p>POST /sim/event/{deviceNo}/{event}：单步触发一台设备上报——停车设备 entry/exit/cancel；
+ * 充电桩 start/finish/cancel（finish 可带 energyWh，缺省随机 10~60 kWh 模拟计量）；
  * GET /sim/devices：查看各设备运行态。</p>
  */
 @Slf4j
@@ -48,7 +50,8 @@ public class SimController {
     public ResponseEntity<Map<String, Object>> event(@PathVariable("deviceNo") String deviceNo,
                                                      @PathVariable("event") String event,
                                                      @RequestParam(value = "plateNo", required = false) String plateNo,
-                                                     @RequestParam(value = "reason", required = false) String reason) {
+                                                     @RequestParam(value = "reason", required = false) String reason,
+                                                     @RequestParam(value = "energyWh", required = false) Long energyWh) {
         SimDevice device = registry.findByDeviceNo(deviceNo);
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("code", 0);
@@ -86,10 +89,50 @@ public class SimController {
                         resp.put("msg", "设备空闲：无会话可取消");
                         return ResponseEntity.ok(resp);
                     }
-                    String r = reason != null ? reason : "设备上报取消";
-                    reporter.reportCancel(device.getDeviceNo(), device.getSessionId(), r);
+                    String r = reason != null ? reason : (device.isCharger() ? "设备上报取消充电" : "设备上报取消");
+                    if (device.isCharger()) {
+                        reporter.reportChargeCancel(device.getDeviceNo(), device.getSessionId(), r);
+                    } else {
+                        reporter.reportCancel(device.getDeviceNo(), device.getSessionId(), r);
+                    }
                     device.clearSession();
                     resp.put("msg", "取消上报成功");
+                }
+                case "start" -> {
+                    //充电桩专属：充电开始（桩编号即 deviceNo，须先有停车会话由服务端锚定）
+                    if (!device.isCharger()) {
+                        resp.put("code", 400);
+                        resp.put("msg", "非充电桩设备不支持 start 事件");
+                        return ResponseEntity.badRequest().body(resp);
+                    }
+                    if (!device.isIdle()) {
+                        resp.put("msg", "设备忙：已在会话中 sessionId=" + device.getSessionId());
+                        return ResponseEntity.ok(resp);
+                    }
+                    String pn = plateNo != null ? plateNo : Plates.pick(now);
+                    Long sessionId = reporter.reportChargeStart(device.getDeviceNo(), pn);
+                    device.bindSession(sessionId, pn, now);
+                    resp.put("msg", "充电开始上报成功");
+                    resp.put("sessionId", sessionId);
+                }
+                case "finish" -> {
+                    //充电桩专属：充电结束（缺省电量随机 10~60 kWh 模拟真实计量上报）
+                    if (!device.isCharger()) {
+                        resp.put("code", 400);
+                        resp.put("msg", "非充电桩设备不支持 finish 事件");
+                        return ResponseEntity.badRequest().body(resp);
+                    }
+                    if (device.isIdle()) {
+                        resp.put("msg", "设备空闲：无充电会话可结束");
+                        return ResponseEntity.ok(resp);
+                    }
+                    long wh = energyWh != null ? energyWh
+                            : ThreadLocalRandom.current().nextLong(10_000L, 60_001L);
+                    Long orderId = reporter.reportChargeFinish(device.getDeviceNo(), device.getSessionId(), wh);
+                    device.clearSession();
+                    resp.put("msg", "充电结束上报成功");
+                    resp.put("orderId", orderId);
+                    resp.put("energyWh", wh);
                 }
                 default -> {
                     resp.put("code", 400);

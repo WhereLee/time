@@ -26,7 +26,7 @@ reason:
     access-token: sim-device-token-2026
     # reason-main 设备接入服务地址（本地双进程联调；云部署改为内网地址）
     parking-api-base-url: http://127.0.0.1:8200/api
-    # 模拟设备清单（deviceNo 与绑定车位编号）
+    # 模拟设备清单（deviceNo 与绑定车位编号；充电桩事件 start/finish/cancel）
     devices:
       - deviceNo: DEV-001
         spaceNo: A-001
@@ -37,6 +37,15 @@ reason:
       - deviceNo: DEV-003
         spaceNo: A-003
         deviceType: 升降杆型
+      - deviceNo: PILE-001
+        spaceNo: B-001
+        deviceType: 充电桩
+      - deviceNo: PILE-002
+        spaceNo: B-002
+        deviceType: 充电桩
+      - deviceNo: PILE-003
+        spaceNo: B-003
+        deviceType: 充电桩
     # 自动剧本：true 时按剧本循环上报（演示满停车场动态）；false 时由 /sim/event 手工触发（联调可控）
     auto:
       enable: false
