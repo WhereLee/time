@@ -51,7 +51,7 @@ class AuthIT {
             .withUsername("root")
             .withPassword("root")
             //仓库根 db/ 脚本挂载进 entrypoint 初始化目录：容器创建后按文件名序自动建库导入
-            //01-壳子基线（23 表）；02-parking 业务域（停车域 4 表 + 预置规则 + 菜单注册）；03-角色授权（adminManager 角色得停车权限）
+            //01-壳子基线（23 表）；02-parking（停车域 4 表+菜单）；03-停车授权；04-charging（充电域 5 表+减免列+充电菜单）；05-充电授权
             .withCopyFileToContainer(
                     MountableFile.forHostPath("../db/reason-faster.sql"),
                     "/docker-entrypoint-initdb.d/01-reason-faster.sql")
@@ -60,7 +60,13 @@ class AuthIT {
                     "/docker-entrypoint-initdb.d/02-parking.sql")
             .withCopyFileToContainer(
                     MountableFile.forHostPath("../db/03-系统管理员授权停车菜单.sql"),
-                    "/docker-entrypoint-initdb.d/03-parking-role-menu-grant.sql");
+                    "/docker-entrypoint-initdb.d/03-parking-role-menu-grant.sql")
+            .withCopyFileToContainer(
+                    MountableFile.forHostPath("../db/04-charging.sql"),
+                    "/docker-entrypoint-initdb.d/04-charging.sql")
+            .withCopyFileToContainer(
+                    MountableFile.forHostPath("../db/05-系统管理员授权充电菜单.sql"),
+                    "/docker-entrypoint-initdb.d/05-charging-role-menu-grant.sql");
 
     /** Testcontainers 无官方 Redis 模块，用通用容器 */
     @Container

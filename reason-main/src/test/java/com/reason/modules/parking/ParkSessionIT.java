@@ -62,13 +62,23 @@ class ParkSessionIT {
             .withDatabaseName("reason_faster")
             .withUsername("root")
             .withPassword("root")
-            //仓库根 db/ 脚本挂载进 entrypoint 初始化目录：容器创建后按文件名序自动建库导入（01 基线 + 02 业务域）
+            //仓库根 db/ 脚本挂载进 entrypoint 初始化目录：容器创建后按文件名序自动建库导入
+            //01 基线 + 02 停车域 + 03 停车授权 + 04 charging（含 park_order 减免列，与本 IT 表结构一致）+ 05 充电授权
             .withCopyFileToContainer(
                     MountableFile.forHostPath("../db/reason-faster.sql"),
                     "/docker-entrypoint-initdb.d/01-reason-faster.sql")
             .withCopyFileToContainer(
                     MountableFile.forHostPath("../db/02-parking.sql"),
-                    "/docker-entrypoint-initdb.d/02-parking.sql");
+                    "/docker-entrypoint-initdb.d/02-parking.sql")
+            .withCopyFileToContainer(
+                    MountableFile.forHostPath("../db/03-系统管理员授权停车菜单.sql"),
+                    "/docker-entrypoint-initdb.d/03-parking-role-menu-grant.sql")
+            .withCopyFileToContainer(
+                    MountableFile.forHostPath("../db/04-charging.sql"),
+                    "/docker-entrypoint-initdb.d/04-charging.sql")
+            .withCopyFileToContainer(
+                    MountableFile.forHostPath("../db/05-系统管理员授权充电菜单.sql"),
+                    "/docker-entrypoint-initdb.d/05-charging-role-menu-grant.sql");
 
     @Container
     static final GenericContainer<?> REDIS =

@@ -65,6 +65,16 @@ public class ParkOrderEntity implements Serializable {
     @Schema(description = "应收金额（分）")
     private Long amountFen;
     /**
+     * 减免金额（分，无减免为 0；amount_fen 保持减免前应收原义，实付=应收−减免可推导）
+     */
+    @Schema(description = "减免金额（分）")
+    private Long discountFen;
+    /**
+     * 核销权益码快照（无减免为空；跨方凭证追溯）
+     */
+    @Schema(description = "核销权益码")
+    private String benefitNo;
+    /**
      * 状态：0-已生成（M0 终态；支付状态 M2 结算域扩展）
      */
     @Schema(description = "状态：0-已生成")
