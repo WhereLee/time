@@ -54,6 +54,10 @@ public class HeartbeatReporter {
         long now = System.currentTimeMillis() / 1000;
         List<Map<String, Object>> devices = new ArrayList<>(registry.all().size());
         for (SimDevice device : registry.all()) {
+            //心跳只报台账内硬件：PARK_DEVICE 是虚拟停车演示设备（B 块退役），不在 device_online，上报会触发台账外告警
+            if (device.isParkDevice()) {
+                continue;
+            }
             Map<String, Object> d = new LinkedHashMap<>();
             d.put("deviceNo", device.getDeviceNo());
             d.put("online", device.isOnline());
