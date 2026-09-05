@@ -2,8 +2,13 @@ package com.reason.modules.charging.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.reason.common.exception.RRException;
+import com.reason.common.utils.Constant;
+import com.reason.common.utils.MapUtils;
+import com.reason.common.utils.PageUtils;
+import com.reason.common.utils.Query;
 import com.reason.modules.charging.dao.ChargeFeeRuleDao;
 import com.reason.modules.charging.dao.ChargeOrderDao;
 import com.reason.modules.charging.dao.ChargeSessionDao;
@@ -16,6 +21,7 @@ import com.reason.modules.charging.entity.ChargingPileEntity;
 import com.reason.modules.charging.entity.BenefitRecordEntity;
 import com.reason.modules.charging.enums.ChargeSessionState;
 import com.reason.modules.charging.enums.PileState;
+import com.reason.modules.charging.form.ChargeSessionForm;
 import com.reason.modules.charging.service.ChargeFeeCalculator;
 import com.reason.modules.charging.service.ChargeSessionService;
 import com.reason.modules.parking.service.ParkSessionService;
@@ -295,6 +301,20 @@ public class ChargeSessionServiceImpl extends ServiceImpl<ChargeSessionDao, Char
     private String genBenefitNo() {
         return "BN" + BN_TS.format(LocalDateTime.now())
                 + String.format("%06d", ThreadLocalRandom.current().nextInt(1_000_000));
+    }
+
+    @Override
+    public PageUtils queryPage(ChargeSessionForm form) {
+        IPage<ChargeSessionEntity> page = new Query<ChargeSessionEntity>().getPage(new MapUtils()
+                .put(Constant.PAGE, form.getPage()).put(Constant.LIMIT, form.getLimit()));
+        chargeSessionDao.selectPage(page, new LambdaQueryWrapper<ChargeSessionEntity>()
+                .like(org.springframework.util.StringUtils.hasText(form.getPileNo()),
+                        ChargeSessionEntity::getPileNo, form.getPileNo())
+                .like(org.springframework.util.StringUtils.hasText(form.getPlateNo()),
+                        ChargeSessionEntity::getPlateNo, form.getPlateNo())
+                .eq(form.getSessionState() != null, ChargeSessionEntity::getSessionState, form.getSessionState())
+                .orderByDesc(ChargeSessionEntity::getSessionId));
+        return new PageUtils(page);
     }
 
     private String normalize(String value, String emptyMsg) {

@@ -1,5 +1,8 @@
 package com.reason.modules.charging.service;
 
+import com.reason.common.utils.PageUtils;
+import com.reason.modules.charging.form.ChargeSessionForm;
+
 /**
  * 充电会话服务（状态机：充电中 → 已结束 | 已取消 | 超时结束，终态不可逆）
  *
@@ -59,4 +62,9 @@ public interface ChargeSessionService {
      * @throws com.reason.common.exception.RRException 会话不存在/非充电中（非法迁移）/无启用费率/状态已被并发变更/桩状态异常
      */
     Long timeoutFinish(Long sessionId, String reason);
+
+    /**
+     * 充电会话分页查询（管理端只读：桩编号/车牌模糊 + 状态筛选）
+     */
+    PageUtils queryPage(ChargeSessionForm form);
 }
