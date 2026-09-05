@@ -4,12 +4,19 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.reason.common.exception.RRException;
+import com.reason.modules.charging.dao.ChargeFeeRuleDao;
+import com.reason.modules.charging.dao.ChargeOrderDao;
 import com.reason.modules.charging.dao.ChargeSessionDao;
 import com.reason.modules.charging.dao.ChargingPileDao;
+import com.reason.modules.charging.dao.BenefitRecordDao;
+import com.reason.modules.charging.entity.ChargeFeeRuleEntity;
+import com.reason.modules.charging.entity.ChargeOrderEntity;
 import com.reason.modules.charging.entity.ChargeSessionEntity;
 import com.reason.modules.charging.entity.ChargingPileEntity;
+import com.reason.modules.charging.entity.BenefitRecordEntity;
 import com.reason.modules.charging.enums.ChargeSessionState;
 import com.reason.modules.charging.enums.PileState;
+import com.reason.modules.charging.service.ChargeFeeCalculator;
 import com.reason.modules.charging.service.ChargeSessionService;
 import com.reason.modules.parking.service.ParkSessionService;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +24,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 充电会话服务实现
@@ -42,11 +53,25 @@ public class ChargeSessionServiceImpl extends ServiceImpl<ChargeSessionDao, Char
     @Autowired
     private ChargeSessionDao chargeSessionDao;
 
+    @Autowired
+    private ChargeFeeRuleDao chargeFeeRuleDao;
+
+    @Autowired
+    private ChargeOrderDao chargeOrderDao;
+
+    @Autowired
+    private BenefitRecordDao benefitRecordDao;
+
     /**
      * 跨上下文只读能力（锚定停车会话），不直连 park_session 表——凭证化边界
      */
     @Autowired
     private ParkSessionService parkSessionService;
+
+    /** 权益策略（M1 固定值，优惠引擎/规则化归 M2） */
+    private static final int BENEFIT_FREE_SECONDS = 3600;   //免停时长：1 小时
+    private static final long BENEFIT_EXPIRE_SECONDS = 24L * 3600;   //有效期：24 小时
+    private static final DateTimeFormatter BN_TS = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -149,6 +174,109 @@ public class ChargeSessionServiceImpl extends ServiceImpl<ChargeSessionDao, Char
                     sessionId, session.getPileId());
             throw new RRException("桩状态异常，取消失败，请联系管理员：" + sessionId);
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long finish(Long sessionId, Long energyWh) {
+        if (sessionId == null) {
+            throw new RRException("会话id不能为空");
+        }
+        if (energyWh == null || energyWh < 0) {
+            throw new RRException("电量不能为空且不能为负");
+        }
+
+        //1.查会话：不存在直接拒绝
+        ChargeSessionEntity session = chargeSessionDao.selectById(sessionId);
+        if (session == null) {
+            throw new RRException("充电会话不存在：" + sessionId);
+        }
+
+        //2.守卫（快速失败层）：非法迁移（终态不可结束）语义化拒绝
+        ChargeSessionState cur = ChargeSessionState.of(session.getSessionState());
+        ChargeSessionState.assertCanTransit(cur, ChargeSessionState.FINISHED);
+
+        long now = System.currentTimeMillis() / 1000;
+
+        //3.会话终态化（最终判官）：充电中 → 已结束，电量落会话
+        //  并发下 finish/cancel 同时读到充电中时仅一方行数>0，另一方收到"状态已变更"而非继续写账
+        int finishRows = chargeSessionDao.update(null, new LambdaUpdateWrapper<ChargeSessionEntity>()
+                .eq(ChargeSessionEntity::getSessionId, sessionId)
+                .eq(ChargeSessionEntity::getSessionState, ChargeSessionState.CHARGING.getCode())
+                .set(ChargeSessionEntity::getSessionState, ChargeSessionState.FINISHED.getCode())
+                .set(ChargeSessionEntity::getSessionEndTime, now)
+                .set(ChargeSessionEntity::getEnergyWh, energyWh)
+                .set(ChargeSessionEntity::getSessionUpdatetime, now));
+        if (finishRows == 0) {
+            throw new RRException("会话状态已变更，请刷新后重试：" + sessionId);
+        }
+
+        //4.读启用费率并结算（本事务已是会话终态化的唯一胜者）
+        //  启用费率 M1 约定仅一条；selectList 防御而非 selectOne（多条时 selectOne 抛 TooManyResults）
+        List<ChargeFeeRuleEntity> enabledRules = chargeFeeRuleDao.selectList(new LambdaQueryWrapper<ChargeFeeRuleEntity>()
+                .eq(ChargeFeeRuleEntity::getRuleState, 1));
+        if (enabledRules.isEmpty()) {
+            throw new RRException("无启用的充电费率，请联系管理员");
+        }
+        ChargeFeeRuleEntity rule = enabledRules.get(0);   //多策略选择（默认/峰谷）归 M2 费率引擎
+        ChargeFeeCalculator.ChargeFeeResult fee = ChargeFeeCalculator.calculate(
+                energyWh, rule.getElecPriceFen(), rule.getServicePriceFen());
+
+        //5.生成订单快照（金额/单价/电量全部定格，规则后续调价不影响历史订单）
+        ChargeOrderEntity order = new ChargeOrderEntity();
+        order.setSessionId(sessionId);
+        order.setPileNo(session.getPileNo());
+        order.setSpaceNo(session.getSpaceNo());
+        order.setPlateNo(session.getPlateNo());
+        order.setOrderStartTime(session.getSessionStartTime());
+        order.setOrderEndTime(now);
+        order.setEnergyWh(energyWh);
+        order.setElecPriceFen(rule.getElecPriceFen());
+        order.setServicePriceFen(rule.getServicePriceFen());
+        order.setElecAmountFen(fee.elecAmountFen());
+        order.setServiceAmountFen(fee.serviceAmountFen());
+        order.setAmountFen(fee.amountFen());
+        order.setOrderState(0);
+        order.setOrderCreatetime(now);
+        chargeOrderDao.insert(order);
+
+        //6.电量 > 0 时签发免停权益（0 Wh 不发权益：充电未生效不送权益，堵免费薅权益）
+        //  锚定继承自充电会话（anchor_session_id 在 start 锁死），核销只能作用到锚定的停车会话
+        if (energyWh > 0) {
+            BenefitRecordEntity benefit = new BenefitRecordEntity();
+            benefit.setBenefitNo(genBenefitNo());
+            benefit.setSourceOrderId(order.getOrderId());
+            benefit.setPlateNo(session.getPlateNo());
+            benefit.setAnchorSessionId(session.getAnchorSessionId());
+            benefit.setFreeSeconds(BENEFIT_FREE_SECONDS);
+            benefit.setExpireTime(now + BENEFIT_EXPIRE_SECONDS);
+            benefit.setBenefitState(0);
+            benefit.setBenefitCreatetime(now);
+            benefitRecordDao.insert(benefit);
+            log.info("充电免停权益已签发：sessionId={}, orderId={}, benefitNo={}",
+                    sessionId, order.getOrderId(), benefit.getBenefitNo());
+        }
+
+        //7.释放桩（条件更新 充电中→空闲）；行数 0 = 会话与桩状态不一致（数据异常），回滚暴露
+        int releaseRows = chargingPileDao.update(null, new LambdaUpdateWrapper<ChargingPileEntity>()
+                .eq(ChargingPileEntity::getPileId, session.getPileId())
+                .eq(ChargingPileEntity::getPileState, PileState.CHARGING.getCode())
+                .set(ChargingPileEntity::getPileState, PileState.IDLE.getCode())
+                .set(ChargingPileEntity::getPileUpdatetime, now));
+        if (releaseRows == 0) {
+            log.error("充电结束时桩释放失败（会话与桩状态不一致）：sessionId={}, pileId={}",
+                    sessionId, session.getPileId());
+            throw new RRException("桩状态异常，结算失败，请联系管理员：" + sessionId);
+        }
+        return order.getOrderId();
+    }
+
+    /**
+     * 权益码生成：BN + 时间戳 + 6 位随机（可读可追溯，防顺序枚举）；唯一索引兜底碰撞
+     */
+    private String genBenefitNo() {
+        return "BN" + BN_TS.format(LocalDateTime.now())
+                + String.format("%06d", ThreadLocalRandom.current().nextInt(1_000_000));
     }
 
     private String normalize(String value, String emptyMsg) {
