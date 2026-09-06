@@ -12,6 +12,7 @@
 *.log
 *.gz
 /reason-device-sim/target
+/reason-barrier-sim/target
 
 # local redis dump files (accidental artifacts)
 *.rdb
