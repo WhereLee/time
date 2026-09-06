@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.reason.modules.sys.dao.SysRoleDao">
+	<!-- 可根据自己的需求，是否要使用 -->
+	<resultMap type="com.reason.modules.sys.entity.SysRoleEntity" id="sysRoleMap">
+		<result property="roleId" column="role_id"/>
+		<result property="roleName" column="role_name"/>
+		<result property="roleComment" column="role_comment"/>
+		<result property="roleCreator" column="role_creator"/>
+		<result property="roleCreatetime" column="role_createtime"/>
+		<result property="roleUpdatetime" column="role_updatetime"/>
+		<result property="roleStatus" column="role_status"/>
+	</resultMap>
+
+	<!-- 查询用户所拥有的角色权限 -->
+	<select id="queryRoleByUserId" resultMap="sysRoleMap">
+		SELECT a.*
+		  FROM sys_role a
+			   LEFT JOIN sys_user_role ur ON a.role_id = ur.role_id
+		 WHERE a.role_status = 0
+		   AND ur.user_id = #{userId}
+	</select>
+
+	<!-- 查询用户拥有的角色ID列表 -->
+	<select id="queryRoleIdByUserId" resultType="java.lang.Long">
+		SELECT a.role_id
+		  FROM sys_role a
+			   LEFT JOIN sys_user_role ur ON a.role_id = ur.role_id
+		 WHERE a.role_status = 0
+		   AND ur.user_id = #{userId}
+	</select>
+
+	<!-- 查询用户自己创建的角色ID列表 -->
+	<select id="queryRoleIdByCreator" resultType="java.lang.Long">
+		SELECT a.role_id
+		  FROM sys_role a
+		 WHERE a.role_status = 0
+		   AND a.role_creator = #{userId}
+	</select>
+
+	<!-- 根据用户ID获取用户最大角色 -->
+	<select id="getRoleTypeByUserId" resultType="java.lang.Long">
+		SELECT
+			min( role_id ) AS roleType
+		FROM
+			sys_user_role
+		WHERE
+			user_id = #{userId}
+	</select>
+
+	<!-- 根据用户ID获取角色名称 多个用逗号拼接 -->
+	<select id="getRoleNamesByUserId" resultType="java.lang.String">
+		SELECT
+			GROUP_CONCAT( r.role_name ) AS roleNames
+		FROM
+			sys_role r
+			LEFT JOIN sys_user_role ur ON r.role_id = ur.role_id
+			LEFT JOIN sys_user u ON ur.user_id = u.user_id
+		WHERE
+			r.role_status = 0
+			AND u.user_id = #{userId}
+	</select>
+</mapper>

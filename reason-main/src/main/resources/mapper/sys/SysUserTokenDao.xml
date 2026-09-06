@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.reason.modules.sys.dao.SysUserTokenDao">
+	<!-- 可根据自己的需求，是否要使用 -->
+	<resultMap type="com.reason.modules.sys.entity.SysUserTokenEntity" id="sysUserTokenMap">
+		<result property="userId" column="user_id"/>
+		<result property="token" column="token"/>
+		<result property="expiretime" column="expiretime"/>
+		<result property="updatetime" column="updatetime"/>
+	</resultMap>
+</mapper>

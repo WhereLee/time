@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.reason.modules.sys.dao.SysMenuDao">
+	<!-- 可根据自己的需求，是否要使用 -->
+	<resultMap type="com.reason.modules.sys.entity.SysMenuEntity" id="sysMenuMap">
+		<result property="menuId" column="menu_id"/>
+		<result property="menuOrigin" column="menu_origin"/>
+		<result property="menuType" column="menu_type"/>
+		<result property="menuName" column="menu_name"/>
+		<result property="menuPerms" column="menu_perms"/>
+		<result property="menuIcon" column="menu_icon"/>
+		<result property="menuPic" column="menu_pic"/>
+		<result property="menuDefPic" column="menu_def_pic"/>
+		<result property="menuUrl" column="menu_url"/>
+		<result property="menuPage" column="menu_page"/>
+		<result property="menuFid" column="menu_fid"/>
+		<result property="menuFids" column="menu_fids"/>
+		<result property="menuOrdernum" column="menu_ordernum"/>
+		<result property="menuUpdatetime" column="menu_updatetime"/>
+		<result property="menuStatus" column="menu_status"/>
+	</resultMap>
+
+	<!-- 查询用户的所有权限 -->
+	<select id="queryPermsByUserId" resultType="java.lang.String">
+		SELECT DISTINCT m.menu_perms
+		  FROM sys_menu m
+			   LEFT JOIN sys_role_menu rm ON rm.menu_id = m.menu_id
+			   LEFT JOIN sys_user_role ur ON ur.role_id = rm.role_id
+		WHERE m.menu_status = 0
+		  AND ur.user_id = #{userId}
+	</select>
+
+	<!-- 查询角色对应的菜单权限 -->
+	<select id="queryMenuByRoleId" resultMap="sysMenuMap">
+		SELECT m.*
+		  FROM sys_menu m
+		  	   LEFT JOIN sys_role_menu rm ON m.menu_id = rm.menu_id
+		 WHERE m.menu_status = 0
+		   AND rm.role_id = #{roleId}
+	</select>
+
+	<!-- 查询用户所拥有的菜单ID -->
+	<select id="queryMenuIdByUserId" resultType="java.lang.Long">
+		SELECT DISTINCT m.menu_id
+		  FROM sys_menu m
+		  	   LEFT JOIN sys_role_menu rm ON m.menu_id = rm.menu_id
+		  	   LEFT JOIN sys_user_role ur ON rm.role_id = ur.role_id
+		 WHERE m.menu_status = 0
+		   AND ur.user_id = #{userId}
+	</select>
+
+	<!-- 根据ID 查询所有下级菜单ID（包括本级） -->
+	<select id="queryMenuIdById" resultType="java.lang.Long">
+		SELECT menu_id
+		  FROM sys_menu
+		 WHERE menu_status = 0
+		   AND (menu_id = #{menuId} OR FIND_IN_SET( #{menuId}, menu_fids ))
+	</select>
+
+	<!-- 根据菜单ID 修改所有下级菜单的fids -->
+	<update id="updateSubMenuById">
+		UPDATE sys_menu
+		   SET menu_fids = REPLACE(menu_fids,#{oldFids},#{newFids})
+		WHERE FIND_IN_SET(#{menuId},menu_fids)
+	</update>
+
+</mapper>

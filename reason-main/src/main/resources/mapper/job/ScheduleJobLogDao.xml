@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.reason.modules.job.dao.ScheduleJobLogDao">
+
+    <!-- 可根据自己的需求，是否要使用 -->
+    <resultMap type="com.reason.modules.job.entity.ScheduleJobLogEntity" id="scheduleJobLogMap">
+        <result property="logId" column="log_id"/>
+        <result property="jobId" column="job_id"/>
+        <result property="jobBean" column="job_bean"/>
+        <result property="jobName" column="job_name"/>
+        <result property="logState" column="log_state"/>
+        <result property="logError" column="log_error"/>
+        <result property="logDuration" column="log_duration"/>
+        <result property="logCreatetime" column="log_createtime"/>
+    </resultMap>
+</mapper>

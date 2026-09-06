@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.reason.modules.sys.dao.SysUserDao">
+
+	<!-- 可根据自己的需求，是否要使用 -->
+    <resultMap type="com.reason.modules.sys.entity.SysUserEntity" id="sysUserMap">
+        <result property="userId" column="user_id"/>
+        <result property="userName" column="user_name"/>
+        <result property="userPassword" column="user_password"/>
+        <result property="userSalt" column="user_salt"/>
+        <result property="userRealname" column="user_realname"/>
+        <result property="userEmail" column="user_email"/>
+        <result property="userPhone" column="user_phone"/>
+        <result property="userQyweixinId" column="user_qyweixin_id"/>
+        <result property="userLogintime" column="user_logintime"/>
+        <result property="userLoginip" column="user_loginip"/>
+        <result property="userPwdChangetime" column="user_pwd_changetime"/>
+        <result property="userCreator" column="user_creator"/>
+        <result property="userCreatetime" column="user_createtime"/>
+        <result property="userUpdatetime" column="user_updatetime"/>
+        <result property="userRecycle" column="user_recycle"/>
+        <result property="userStatus" column="user_status"/>
+    </resultMap>
+
+
+    <!-- 根据登录名（用户名或手机号码，查询系统用户 -->
+    <select id="getUserByLoginname" resultType="com.reason.modules.sys.entity.SysUserEntity">
+		SELECT * FROM sys_user
+		WHERE user_status = 0
+		  AND (user_name = #{loginname} OR user_phone = #{loginname})
+	</select>
+
+    <!-- 查询用户自己创建的用户ID列表 -->
+    <select id="queryUserIdByCreator" resultType="java.lang.Long">
+        SELECT a.user_id
+          FROM sys_user a
+         WHERE a.user_status = 0
+           AND a.user_creator = #{userId}
+    </select>
+
+</mapper>
