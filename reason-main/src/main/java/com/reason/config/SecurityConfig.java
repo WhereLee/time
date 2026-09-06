@@ -41,6 +41,8 @@ public class SecurityConfig {
             "/v2/api-docs", "/v2/api-docs/**", "/v2/api-docs-ext", "/v2/api-docs-ext/**",
             "/v3/api-docs", "/v3/api-docs/**", "/doc.html", "/swagger-ui/**",
             "/sys/init", "/sys/code", "/sys/login", "/sys/auth",
+            //设备事件通道：免管理端 token（设备无登录态）；安全由 X-Device-Token 比对承担（DeviceEventController）
+            "/device/event",
             "/test/**", "/captcha.jpg", "/aaa.txt", "/app/**", "/etc/test/**",
             "/actuator/health", "/actuator/info",
             "/error"

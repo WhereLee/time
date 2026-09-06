@@ -1,0 +1,10 @@
+com\reason\sim\reporter\EventReporter.class
+com\reason\sim\config\SimProperties$DeviceCfg.class
+com\reason\sim\model\BarrierAction.class
+com\reason\sim\reporter\HttpEventReporter.class
+com\reason\sim\config\SimProperties.class
+com\reason\sim\model\Barrier.class
+com\reason\sim\model\BarrierState.class
+com\reason\sim\BarrierSimApplication.class
+com\reason\sim\registry\BarrierRegistry.class
+com\reason\sim\controller\CommandController.class
