@@ -46,4 +46,15 @@ public interface DeviceAlarmService extends IService<DeviceAlarmEntity> {
      * @return 自动关闭的告警条数
      */
     int markRecovered(String deviceNo);
+
+    /**
+     * 心跳恢复反向标记（阶段1 实测暴露补漏）：设备离线判定的唯一权威 = 心跳 TTL 过期，
+     * 因此恢复的权威 = 心跳再次到达——收到一次成功心跳即自动关闭该设备未处理的 OFFLINE 告警。
+     *
+     * <p>只关 OFFLINE：MOVING_STUCK/AUTO_CORRECT_FAILED 需要事件级证据（动作到位/校正闭环），
+     * 心跳粒度够不到（卡动作中的设备心跳正常）——那些仍由 {@link #markRecovered} 在事件路径关。</p>
+     *
+     * @return 自动关闭的告警条数
+     */
+    int markOnlineRecovered(String deviceNo);
 }

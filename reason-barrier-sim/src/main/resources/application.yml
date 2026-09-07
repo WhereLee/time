@@ -11,6 +11,11 @@ sim:
   heartbeat-url: http://127.0.0.1:8200/api/device/heartbeat
   # 心跳间隔秒（须小于平台 reason.barrier.heartbeat-timeout-seconds=30，留丢包容量）
   heartbeat-interval-seconds: 10
+  # HTTP 超时（秒）——P5 参数化：原硬编码 2s/3s；可配 5-10s 按注入器剧本标定，留抖动余量
+  connect-timeout-seconds: 2
+  read-timeout-seconds: 5
+  # 心跳并行线程上限（P5：每设备独立节拍，一台慢只丢自己的轮，不拖垮整组）
+  heartbeat-threads: 8
   # 升降动作耗时（毫秒）：模拟真实设备动作非瞬时
   move-millis: 3000
   # 本进程"安装"的物理杆清单（deviceNo 与平台台账登记对齐——契约握手；

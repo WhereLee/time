@@ -39,6 +39,22 @@ public class SimProperties {
     private long moveMillis = 3000;
 
     /**
+     * HTTP 连接超时秒（sim→平台 上行链路；P5 参数化——原硬编码 2s，按注入器剧本标定）
+     */
+    private int connectTimeoutSeconds = 2;
+
+    /**
+     * HTTP 读超时秒（P5：原硬编码心跳/事件各 2s/3s；可配 5-10s 留抖动余量，按注入器剧本标定）
+     */
+    private int readTimeoutSeconds = 5;
+
+    /**
+     * 心跳并行线程上限（P5：单线程逐台串行阻塞 = T11 节拍塌缩根因——每设备独立调度、
+     * 谁慢只丢自己的轮；上限防设备数膨胀后线程泛滥，阶段 3 批量设备按需调）
+     */
+    private int heartbeatThreads = 8;
+
+    /**
      * 安装的设备清单（与平台台账 deviceNo 对齐；secret 为 0.5 per-device HMAC 密钥——
      * 环境变量注入（仓库零明文），须与平台 device_record.device_secret 同值）
      */

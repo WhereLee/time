@@ -10,7 +10,7 @@
 
     <contextName>logback</contextName>
     <!-- name的值是变量的名称，value的值时变量定义的值。通过定义的值会被插入到logger上下文中。定义变量后，可以使“${}”来使用变量。 -->
-    <property name="LOG_FILE_PATH" value="logs" />
+    <property name="LOG_FILE_PATH" value="${LOG_DIR:-logs}" />
     <!-- 日志输出格式 -->
     <property name="LOG_PATTERN_FORMAT" value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId}] %class{36}%L %M - %msg%xEx%n" />
 

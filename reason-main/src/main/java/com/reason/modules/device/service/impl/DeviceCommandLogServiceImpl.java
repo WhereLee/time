@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.reason.common.exception.RRException;
+import com.reason.common.utils.PageParams;
 import com.reason.common.utils.PageUtils;
 import com.reason.common.utils.StringUtils;
 import com.reason.modules.device.config.BarrierRedisKeys;
@@ -187,8 +188,9 @@ public class DeviceCommandLogServiceImpl extends ServiceImpl<DeviceCommandLogDao
 
     @Override
     public PageUtils queryPage(DeviceCommandLogForm form) {
-        int pageNum = form.getPage() == null ? 1 : Integer.parseInt(form.getPage());
-        int limit = form.getLimit() == null ? 10 : Integer.parseInt(form.getLimit());
+        //T15：分页参数统一钳制（非法输入不再 500、超大 limit 不放行）
+        int pageNum = PageParams.page(form.getPage());
+        int limit = PageParams.limit(form.getLimit());
 
         IPage<DeviceCommandLogEntity> page = this.page(
                 new Page<>(pageNum, limit),

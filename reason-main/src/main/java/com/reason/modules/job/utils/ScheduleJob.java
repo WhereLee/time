@@ -14,6 +14,7 @@ import com.reason.common.utils.SpringContextUtils;
 import com.reason.modules.job.entity.ScheduleJobEntity;
 import com.reason.modules.job.entity.ScheduleJobLogEntity;
 import lombok.extern.slf4j.Slf4j;
+import org.quartz.DisallowConcurrentExecution;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
 import org.springframework.scheduling.quartz.QuartzJobBean;
@@ -27,6 +28,7 @@ import java.lang.reflect.Method;
  * @author Mark sunlightcs@gmail.com
  */
 @Slf4j
+@DisallowConcurrentExecution
 public class ScheduleJob extends QuartzJobBean {
     @Override
     protected void executeInternal(JobExecutionContext context) throws JobExecutionException {
@@ -48,10 +50,7 @@ public class ScheduleJob extends QuartzJobBean {
 
         try {
             //执行任务
-        	//log.info("任务准备执行，任务ID：" + scheduleJob.getJobId());
-
-//			Object target = SpringContextUtils.getBean(scheduleJob.getJobBean());
-			String jobBean = scheduleJob.getJobBean();
+        	String jobBean = scheduleJob.getJobBean();
 // 解析规则：截取第一个"-"或"_"前的核心标识（兼容addTask-2/liftingStrategyTask_57_begin）
 			String coreBean = jobBean.split("[-_]")[0];
 			Object target = SpringContextUtils.getBean(coreBean);
@@ -64,18 +63,21 @@ public class ScheduleJob extends QuartzJobBean {
 			jobLog.setLogDuration(times);
 			//任务状态    0：成功    1：失败
 			jobLog.setLogState(0);
-
-			//log.info("任务执行完毕，任务ID：" + scheduleJob.getJobId() + "  总共耗时：" + times + "毫秒");
 		} catch (Exception e) {
-			//log.info("任务执行失败，任务ID：" + scheduleJob.getJobId(), e);
-			
-			//任务执行总时长
+			//T12 失败不再静默：反射调用必包 InvocationTargetException，只记外层 toString 则根因系统性丢失——
+			//取最内层 cause 落库（定位到业务异常本身），error.log 带 jobId+全堆栈（排障双落点）
 			Long times = System.currentTimeMillis()/1000 - startTime;
 			jobLog.setLogDuration(times);
-			
-			//任务状态    0：成功    1：失败
 			jobLog.setLogState(1);
-			jobLog.setLogError(StringUtils.substring(e.toString(), 0, 2000));
+			Throwable root = e;
+			while (root.getCause() != null) {
+			    root = root.getCause();
+			}
+			jobLog.setLogError(StringUtils.substring(root.toString(), 0, 2000));
+			log.error("任务执行失败 jobId={} jobBean={} root={}",
+			        scheduleJob.getJobId(), scheduleJob.getJobBean(), root.toString(), root);
+			//不重抛 JobExecutionException：任务分钟级周期自带自愈重试（内部幂等），
+			//misfire 重触发只会放大告警面——失败已双落点可见，交人工处置
 		}finally {
 			scheduleJobLogService.save(jobLog);
 		}

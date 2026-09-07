@@ -112,7 +112,12 @@ public class DeviceMonitorServiceImpl implements DeviceMonitorService {
             commandLogService.markExecFailed(deviceNo);
         }
 
-        //4. 刷新在线 key（覆盖式 SET + TTL：每次心跳续命，停止心跳后 TTL 自然过期 = 离线）
+        //4. 恢复反向标记（阶段1 实测补漏）：能收到心跳 = 设备活着 = 离线判定反转——
+        //自动关闭该设备未处理 OFFLINE 告警（主节点宕机期间平台自收不到心跳而误报的离线，
+        //恢复后不该留在未处理列表等人工；OFFLINE 关闭权威 = 心跳到达，见 markOnlineRecovered）
+        deviceAlarmService.markOnlineRecovered(deviceNo);
+
+        //5. 刷新在线 key（覆盖式 SET + TTL：每次心跳续命，停止心跳后 TTL 自然过期 = 离线）
         stringRedisTemplate.opsForValue().set(BarrierRedisKeys.ONLINE_PREFIX + deviceNo,
                 String.valueOf(System.currentTimeMillis() / 1000),
                 barrierProperties.getHeartbeatTimeoutSeconds(), TimeUnit.SECONDS);

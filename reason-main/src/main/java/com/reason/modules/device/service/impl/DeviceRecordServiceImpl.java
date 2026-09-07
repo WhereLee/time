@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.reason.common.exception.RRException;
+import com.reason.common.utils.PageParams;
 import com.reason.common.utils.PageUtils;
 import com.reason.common.utils.StringUtils;
 import com.reason.modules.device.config.BarrierRedisKeys;
@@ -14,10 +15,14 @@ import com.reason.modules.device.enums.DeviceState;
 import com.reason.modules.device.form.DeviceRecordForm;
 import com.reason.modules.device.service.DeviceRecordService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 设备台账服务实现
@@ -40,8 +45,9 @@ public class DeviceRecordServiceImpl extends ServiceImpl<DeviceRecordDao, Device
 
     @Override
     public PageUtils queryPage(DeviceRecordForm form) {
-        int pageNum = form.getPage() == null ? 1 : Integer.parseInt(form.getPage());
-        int limit = form.getLimit() == null ? 10 : Integer.parseInt(form.getLimit());
+        //T15：分页参数统一钳制（非法输入不再 500、超大 limit 不放行）
+        int pageNum = PageParams.page(form.getPage());
+        int limit = PageParams.limit(form.getLimit());
 
         IPage<DeviceRecordEntity> page = this.page(
                 new Page<>(pageNum, limit),
@@ -52,10 +58,21 @@ public class DeviceRecordServiceImpl extends ServiceImpl<DeviceRecordDao, Device
                         .eq(form.getDeviceState() != null, DeviceRecordEntity::getDeviceState, form.getDeviceState())
                         .orderByDesc(DeviceRecordEntity::getDeviceCreatetime)
         );
-        //在线状态实时填充（Redis EXISTS：心跳 key 未过期即在线）——展示字段不落库，落库即过时
-        for (DeviceRecordEntity record : page.getRecords()) {
-            record.setOnline(Boolean.TRUE.equals(
-                    stringRedisTemplate.hasKey(BarrierRedisKeys.ONLINE_PREFIX + record.getDeviceNo())));
+        //在线状态实时填充（Redis EXISTS：心跳 key 未过期即在线）——展示字段不落库，落库即过时；
+        //T15：pipeline 一次往返查全部（原每行一次 hasKey = 列表页 N+1 次 Redis 往返）
+        List<DeviceRecordEntity> records = page.getRecords();
+        if (!records.isEmpty()) {
+            List<byte[]> keys = records.stream()
+                    .map(r -> (BarrierRedisKeys.ONLINE_PREFIX + r.getDeviceNo()).getBytes(StandardCharsets.UTF_8))
+                    .collect(Collectors.toList());
+            List<Object> results = stringRedisTemplate.executePipelined(
+                    (RedisCallback<Object>) conn -> {
+                        keys.forEach(conn::exists);
+                        return null;
+                    });
+            for (int i = 0; i < records.size(); i++) {
+                records.get(i).setOnline(Boolean.TRUE.equals(results.get(i)));
+            }
         }
         return new PageUtils(page);
     }

@@ -9,12 +9,14 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -49,15 +51,19 @@ public class HttpEventReporter implements EventReporter {
     public HttpEventReporter(SimProperties properties, NetworkCondition network) {
         this.properties = properties;
         this.network = network;
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(2000);
-        factory.setReadTimeout(3000);
+        //P5：JDK HttpClient 连接复用（不再每次请求新建 TCP 连接）+ 超时参数化入 yml 可标定
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(properties.getConnectTimeoutSeconds()))
+                .build();
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+        factory.setReadTimeout(Duration.ofSeconds(properties.getReadTimeoutSeconds()));
         this.restTemplate = new RestTemplate(factory);
         ThreadFactory tf = r -> {
             Thread t = new Thread(r, "barrier-event-sender");
             t.setDaemon(true);
             return t;
         };
+        //单发送线程保序：事件携带递增 eventSeq，平台序守卫会拒绝乱序的迟到真事件（D5 同源约束）
         this.sender = Executors.newSingleThreadExecutor(tf);
     }
 

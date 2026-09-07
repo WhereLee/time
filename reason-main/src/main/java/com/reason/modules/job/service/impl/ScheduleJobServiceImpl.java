@@ -25,6 +25,7 @@ import com.reason.modules.job.utils.ScheduleUtils;
 import com.reason.modules.job.vo.ScheduleJobVO;
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.CronTrigger;
+import org.quartz.ObjectAlreadyExistsException;
 import org.quartz.Scheduler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,19 +42,35 @@ public class ScheduleJobServiceImpl extends ServiceImpl<ScheduleJobDao, Schedule
 	
 	/**
 	 * 项目启动时，初始化定时器
+	 *
+	 * <p>T13 双实例同启竞态：集群模式下第二节点 getCronTrigger 可能读到空（checkin 未同步），
+	 * 先 create 撞 ObjectAlreadyExistsException → Bean 初始化失败整个应用起不来。
+	 * 改为：create 冲突即降级 update（幂等——第二节点不炸，任务由 JobStore 集群语义接管）。</p>
 	 */
 	@PostConstruct
 	public void init(){
 		List<ScheduleJobEntity> scheduleJobList = this.listByMap(new MapUtils().put("job_status",0));
 		log.info("scheduleJobList:{}",scheduleJobList.size());
 		for(ScheduleJobEntity scheduleJob : scheduleJobList){
-			CronTrigger cronTrigger = ScheduleUtils.getCronTrigger(scheduler, scheduleJob.getJobId());
-            //如果不存在，则创建
-            if(cronTrigger == null) {
-                ScheduleUtils.createScheduleJob(scheduler, scheduleJob);
-            }else {
-                ScheduleUtils.updateScheduleJob(scheduler, scheduleJob);
-            }
+			Long jobId = scheduleJob.getJobId();
+			try {
+				CronTrigger cronTrigger = ScheduleUtils.getCronTrigger(scheduler, jobId);
+				//如果不存在，则创建
+				if(cronTrigger == null) {
+					ScheduleUtils.createScheduleJob(scheduler, scheduleJob);
+				}else {
+					ScheduleUtils.updateScheduleJob(scheduler, scheduleJob);
+				}
+			} catch (RuntimeException e) {
+				//T13 双实例同启竞态：check(trigger 是否已存在) 与 create 之间仍有窗口，第二节点 create 撞已存在——
+				//ScheduleUtils.createScheduleJob 将 SchedulerException 包成 RRException，按 cause 链识别：冲突即 update 幂等
+				if (e.getCause() instanceof ObjectAlreadyExistsException) {
+					log.warn("定时任务已存在(双实例同启竞态)，转为更新 jobId={}", jobId);
+					ScheduleUtils.updateScheduleJob(scheduler, scheduleJob);
+				} else {
+					throw e;
+				}
+			}
 		}
 	}
 

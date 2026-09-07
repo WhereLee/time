@@ -34,6 +34,12 @@ public class NetworkCondition {
     /** 丢下一次事件上报（验证事件失败重试；心跳不消费此开关——心跳周期自带重试语义） */
     private final AtomicBoolean dropNextEvent = new AtomicBoolean(false);
 
+    /**
+     * 心跳单次人为延迟毫秒（P5/T11 剧本：网络故障延迟 0.5-2s+ 时单台上报阻塞——
+     * 并行化后只拖慢自己的轮次，其余设备节拍不受影响；模拟器运行时注入）
+     */
+    private volatile long heartbeatDelayMillis = 0;
+
     public boolean isBlockUpstream() {
         return blockUpstream;
     }
@@ -76,5 +82,14 @@ public class NetworkCondition {
             dropNextEvent.set(true);
             log.warn("[网络剧本] 已布防：下一次事件上报将被丢弃（验证上报失败重试）");
         }
+    }
+
+    public long getHeartbeatDelayMillis() {
+        return heartbeatDelayMillis;
+    }
+
+    public void setHeartbeatDelayMillis(long millis) {
+        this.heartbeatDelayMillis = millis;
+        log.warn("[网络剧本] 心跳延迟注入置为 {}ms（P5：验证慢设备不拖垮整组节拍）", millis);
     }
 }

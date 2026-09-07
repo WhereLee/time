@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.reason.common.exception.RRException;
+import com.reason.common.utils.PageParams;
 import com.reason.common.utils.PageUtils;
 import com.reason.common.utils.StringUtils;
 import com.reason.modules.device.config.BarrierProperties;
@@ -121,9 +122,26 @@ public class DeviceAlarmServiceImpl extends ServiceImpl<DeviceAlarmDao, DeviceAl
     }
 
     @Override
+    public int markOnlineRecovered(String deviceNo) {
+        //只关 OFFLINE（心跳恢复 = 离线判定反转的权威）；MOVING_STUCK/AUTO_CORRECT_FAILED
+        //需事件级证据，仍由 markRecovered 在事件路径关闭——类型集合分离，语义不混
+        int rows = baseMapper.update(null, new LambdaUpdateWrapper<DeviceAlarmEntity>()
+                .eq(DeviceAlarmEntity::getDeviceNo, deviceNo)
+                .eq(DeviceAlarmEntity::getAlarmHandled, 0)
+                .eq(DeviceAlarmEntity::getAlarmType, AlarmType.OFFLINE.getCode())
+                .set(DeviceAlarmEntity::getAlarmHandled, 1)
+                .set(DeviceAlarmEntity::getAlarmHandledTime, System.currentTimeMillis() / 1000));
+        if (rows > 0) {
+            log.info("心跳恢复，自动关闭离线告警 {} 条 deviceNo={}", rows, deviceNo);
+        }
+        return rows;
+    }
+
+    @Override
     public PageUtils queryPage(DeviceAlarmForm form) {
-        int pageNum = form.getPage() == null ? 1 : Integer.parseInt(form.getPage());
-        int limit = form.getLimit() == null ? 10 : Integer.parseInt(form.getLimit());
+        //T15：分页参数统一钳制（非法输入不再 500、超大 limit 不放行）
+        int pageNum = PageParams.page(form.getPage());
+        int limit = PageParams.limit(form.getLimit());
 
         IPage<DeviceAlarmEntity> page = this.page(
                 new Page<>(pageNum, limit),
