@@ -1,6 +1,6 @@
-package com.reason.sim.model;
+package com.reason.barrier.model;
 
-import com.reason.sim.reporter.EventReporter;
+import com.reason.barrier.reporter.EventReporter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.ExecutorService;
@@ -58,7 +58,7 @@ public class Barrier {
     /**
      * 指令入口：裁决合法性并启动动作（异步执行，立即返回）
      *
-     * @throws IllegalStateException 动作在当前状态不合法（由平台透传给管理端）
+     * @throws IllegalStateException 动作在当前状态不合法（由 service 翻译后回执平台）
      */
     public synchronized void execute(BarrierAction action) {
         //状态机裁决：当前状态允许这个动作吗？

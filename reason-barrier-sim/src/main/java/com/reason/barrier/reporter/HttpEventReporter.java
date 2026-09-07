@@ -1,7 +1,7 @@
-package com.reason.sim.reporter;
+package com.reason.barrier.reporter;
 
-import com.reason.sim.config.SimProperties;
-import com.reason.sim.model.BarrierState;
+import com.reason.barrier.config.SimProperties;
+import com.reason.barrier.model.BarrierState;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;

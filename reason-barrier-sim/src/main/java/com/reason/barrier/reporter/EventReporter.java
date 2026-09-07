@@ -1,6 +1,6 @@
-package com.reason.sim.reporter;
+package com.reason.barrier.reporter;
 
-import com.reason.sim.model.BarrierState;
+import com.reason.barrier.model.BarrierState;
 
 /**
  * 状态上报通道（杆 -> 平台）

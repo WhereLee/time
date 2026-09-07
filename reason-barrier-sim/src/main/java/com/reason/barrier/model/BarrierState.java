@@ -1,4 +1,4 @@
-package com.reason.sim.model;
+package com.reason.barrier.model;
 
 /**
  * 杆的物理状态（码值与平台侧 DeviceState 对齐：1-升起 2-降下 3-动作中 4-故障）

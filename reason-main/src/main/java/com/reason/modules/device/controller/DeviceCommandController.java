@@ -1,6 +1,7 @@
 package com.reason.modules.device.controller;
 
 import com.github.xiaoymin.knife4j.annotations.ApiOperationSupport;
+import com.reason.common.annotation.RepeatGuard;
 import com.reason.common.annotation.SysLog;
 import com.reason.common.utils.Result;
 import com.reason.modules.device.form.DeviceCommandForm;
@@ -34,7 +35,8 @@ public class DeviceCommandController extends AbstractController {
      */
     @Operation(summary = "升起", description = "向设备下发升起指令；返回仅代表指令已受理，状态以设备事件回报为准；权限：device:command:open")
     @ApiOperationSupport(order = 1)
-    @SysLog(module = "设备台账", func = "升起", value = "远程升杆指令")
+    @SysLog(module = "设备指令", func = "升起", value = "远程升杆指令")
+    @RepeatGuard //防连点：3秒内同一操作者重复点击直接拦截（自定义注解+AOP示例）
     @PostMapping("/open")
     @PreAuthorize("hasAuthority('device:command:open')")
     public Result<String> open(@RequestBody DeviceCommandForm form) {
@@ -47,7 +49,8 @@ public class DeviceCommandController extends AbstractController {
      */
     @Operation(summary = "降下", description = "向设备下发降下指令；返回仅代表指令已受理，状态以设备事件回报为准；权限：device:command:close")
     @ApiOperationSupport(order = 2)
-    @SysLog(module = "设备台账", func = "降下", value = "远程降杆指令")
+    @SysLog(module = "设备指令", func = "降下", value = "远程降杆指令")
+    @RepeatGuard //防连点：3秒内同一操作者重复点击直接拦截（自定义注解+AOP示例）
     @PostMapping("/close")
     @PreAuthorize("hasAuthority('device:command:close')")
     public Result<String> close(@RequestBody DeviceCommandForm form) {

@@ -71,18 +71,18 @@ public class DeviceRecordServiceImpl extends ServiceImpl<DeviceRecordDao, Device
 
     @Override
     public void updateStateByEvent(String deviceNo, int stateCode) {
-        //档案必须存在：未登记设备的上报 = 配置错位（模拟器里有、平台没建档），显式失败让设备侧发现
-        DeviceRecordEntity record = this.getOne(new LambdaQueryWrapper<DeviceRecordEntity>()
-                .eq(DeviceRecordEntity::getDeviceNo, deviceNo));
-        if (record == null) {
-            throw new RRException("未登记的设备上报事件: " + deviceNo);
-        }
-        //只更新状态与更新时间（单一时钟源：时间戳以服务器为准）；相同状态重复上报幂等无害
+        //单条条件 UPDATE（效率：省一次查询；原子：无查改间隙竞态）
+        //baseMapper.update 返回影响行数：0 = 档案不存在（模拟器里有、平台没建档 = 配置错位），
+        //显式失败让设备侧发现；相同状态重复上报幂等无害（影响行数 1，直接覆盖）
         DeviceRecordEntity update = new DeviceRecordEntity();
-        update.setDeviceId(record.getDeviceId());
         update.setDeviceState(stateCode);
         update.setDeviceUpdatetime(System.currentTimeMillis() / 1000);
-        this.updateById(update);
+        int rows = baseMapper.update(update, new LambdaQueryWrapper<DeviceRecordEntity>()
+                .eq(DeviceRecordEntity::getDeviceNo, deviceNo));
+        if (rows == 0) {
+            throw new RRException("未登记的设备上报事件: " + deviceNo);
+        }
+        //单一时钟源：时间戳以服务器为准，不采信设备时钟
         log.info("设备事件驱动状态更新 deviceNo={} state={}", deviceNo, stateCode);
     }
 }

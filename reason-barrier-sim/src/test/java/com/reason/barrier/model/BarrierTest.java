@@ -1,12 +1,11 @@
-package com.reason.sim.model;
+package com.reason.barrier.model;
 
-import com.reason.sim.reporter.EventReporter;
+import com.reason.barrier.reporter.EventReporter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,15 +34,14 @@ class BarrierTest {
 
     @Test
     @DisplayName("初始为降下态，降下态允许升起")
-    void 初始降下_可升起() throws Exception {
+    void 初始降下_可升起() {
         FakeReporter reporter = new FakeReporter();
         Barrier barrier = newBarrier(reporter, 50);
         assertThat(barrier.getState()).isEqualTo(BarrierState.DOWN);
 
-        CountDownLatch done = new CountDownLatch(1);
         //execute 异步执行，轮询等待到位
         barrier.execute(BarrierAction.OPEN);
-        waitForState(barrier, BarrierState.UP, done);
+        waitForState(barrier, BarrierState.UP);
 
         //完整动作链：动作中 -> 到位，且每段都上报了
         assertThat(reporter.reported).containsExactly(BarrierState.MOVING, BarrierState.UP);
@@ -51,11 +49,11 @@ class BarrierTest {
 
     @Test
     @DisplayName("升起态不允许再升（状态机拒绝）")
-    void 升起态_拒绝再升() throws Exception {
+    void 升起态_拒绝再升() {
         FakeReporter reporter = new FakeReporter();
         Barrier barrier = newBarrier(reporter, 30);
         barrier.execute(BarrierAction.OPEN);
-        waitForState(barrier, BarrierState.UP, new CountDownLatch(1));
+        waitForState(barrier, BarrierState.UP);
 
         assertThatThrownBy(() -> barrier.execute(BarrierAction.OPEN))
                 .isInstanceOf(IllegalStateException.class)
@@ -64,15 +62,15 @@ class BarrierTest {
 
     @Test
     @DisplayName("升起态允许降下；降下态不允许再降")
-    void 升降闭环_拒绝重复降() throws Exception {
+    void 升降闭环_拒绝重复降() {
         FakeReporter reporter = new FakeReporter();
         Barrier barrier = newBarrier(reporter, 30);
         //升上去
         barrier.execute(BarrierAction.OPEN);
-        waitForState(barrier, BarrierState.UP, new CountDownLatch(1));
+        waitForState(barrier, BarrierState.UP);
         //降下来
         barrier.execute(BarrierAction.CLOSE);
-        waitForState(barrier, BarrierState.DOWN, new CountDownLatch(1));
+        waitForState(barrier, BarrierState.DOWN);
         //已降下，再降被拒
         assertThatThrownBy(() -> barrier.execute(BarrierAction.CLOSE))
                 .isInstanceOf(IllegalStateException.class)
@@ -93,10 +91,15 @@ class BarrierTest {
     }
 
     /** 轮询等待目标状态（单测不做 sleep 硬等，最多 2 秒） */
-    private void waitForState(Barrier barrier, BarrierState target, CountDownLatch done) throws Exception {
+    private void waitForState(Barrier barrier, BarrierState target) {
         long deadline = System.currentTimeMillis() + 2000;
         while (barrier.getState() != target && System.currentTimeMillis() < deadline) {
-            TimeUnit.MILLISECONDS.sleep(10);
+            try {
+                TimeUnit.MILLISECONDS.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
         }
         assertThat(barrier.getState()).isEqualTo(target);
     }

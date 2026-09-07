@@ -1,8 +1,8 @@
-package com.reason.sim.registry;
+package com.reason.barrier.registry;
 
-import com.reason.sim.config.SimProperties;
-import com.reason.sim.model.Barrier;
-import com.reason.sim.reporter.EventReporter;
+import com.reason.barrier.config.SimProperties;
+import com.reason.barrier.model.Barrier;
+import com.reason.barrier.reporter.EventReporter;
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Component;
 

@@ -1,4 +1,4 @@
-package com.reason.sim;
+package com.reason.barrier;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
