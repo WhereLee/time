@@ -3,54 +3,75 @@ package com.reason.modules.device.controller;
 import com.github.xiaoymin.knife4j.annotations.ApiOperationSupport;
 import com.reason.common.exception.RRException;
 import com.reason.common.utils.Result;
-import com.reason.modules.device.config.DeviceChannelProperties;
+import com.reason.modules.device.config.DeviceChannelAuthenticator;
 import com.reason.modules.device.enums.DeviceState;
 import com.reason.modules.device.form.DeviceHeartbeatForm;
 import com.reason.modules.device.service.DeviceMonitorService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * 设备心跳接收口（设备侧 → 平台，周期性自述）
  *
- * <p>与事件通道同为设备侧调用（无管理端登录态），走 X-Device-Token 设备通道鉴权 +
+ * <p>与事件通道同为设备侧调用（无管理端登录态），走 0.5 per-device HMAC 设备通道鉴权 +
  * SecurityConfig 白名单。心跳高频（10s/台），处理路径保持轻：对账 → 告警 → 刷 Redis TTL。</p>
+ *
+ * <p>state 语义（0.7）：允许 null（只报活不报态——老设备/降级模式），null 时跳过对账仅刷 TTL；
+ * 非法码 400 语义化（疑似伪造/协议错）且不影响后续正常心跳。</p>
  */
 @Tag(name = "设备心跳")
 @RestController
 @RequestMapping("device/heartbeat")
 public class DeviceHeartbeatController {
 
-    /** 设备通道令牌请求头（与事件通道同一凭证体系） */
-    private static final String TOKEN_HEADER = "X-Device-Token";
+    /** 设备编号请求头（0.5 per-device 凭证寻址） */
+    private static final String DEVICE_HEADER = "X-Device-No";
+
+    /** 设备签名请求头（HMAC(secret, deviceNo|state)） */
+    private static final String SIGN_HEADER = "X-Device-Sign";
 
     @Autowired
     private DeviceMonitorService deviceMonitorService;
 
     @Autowired
-    private DeviceChannelProperties channelProperties;
+    private DeviceChannelAuthenticator authenticator;
 
     /**
-     * 心跳上报：刷新在线状态 + 状态自述对账
+     * 心跳上报：刷新在线状态 + 状态自述对账（state 可空=只报活）
      */
-    @Operation(summary = "心跳上报", description = "设备侧周期调用：刷新在线 key(TTL)，携带状态自述供对账校正")
+    @Operation(summary = "心跳上报", description = "设备侧周期调用：刷新在线 key(TTL)，携带状态自述供对账校正（state 可空=只报活）")
     @ApiOperationSupport(order = 1)
     @PostMapping
-    public Result<String> heartbeat(@RequestHeader(TOKEN_HEADER) String token,
+    public Result<String> heartbeat(@RequestHeader(value = DEVICE_HEADER, required = false) String deviceNoHeader,
+                                    @RequestHeader(value = SIGN_HEADER, required = false) String signature,
                                     @RequestBody DeviceHeartbeatForm form) {
-        //设备通道鉴权（与事件通道一致：常量时间比对收口在 DeviceChannelProperties.matches，快速失败不静默）
-        if (!channelProperties.matches(token)) {
-            throw new RRException("设备令牌无效");
+        //0.5 设备通道鉴权：per-device HMAC（与事件通道同一凭证体系）
+        authenticator.authenticateHeartbeat(form.getDeviceNo(), form.getState(), signature);
+
+        //0.7：state 允许 null（只报活）；非 null 必须合法（非法=协议错 400，疑似伪造）
+        Integer stateCode = null;
+        if (form.getState() != null) {
+            try {
+                stateCode = DeviceState.fromCode(form.getState()).getCode();
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "非法状态码: " + form.getState() + "（协议 v2：1-升起 2-降下 3-动作中 4-故障）");
+            }
         }
-        //状态码合法性校验（未知码=协议错，快速失败；心跳必须带状态——自述是对账数据源）
-        DeviceState state = DeviceState.fromCode(form.getState());
-        deviceMonitorService.heartbeat(form.getDeviceNo(), state.getCode());
+        try {
+            deviceMonitorService.heartbeat(form.getDeviceNo(), stateCode);
+        } catch (RRException e) {
+            //未登记设备心跳 = 配置错位（调用方问题）-> 400
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
         return Result.ok();
     }
 }

@@ -24,7 +24,7 @@ CREATE TABLE `device_command_log` (
   `command_action` varchar(16) NOT NULL COMMENT '指令动作：OPEN-升起 CLOSE-降下',
   `command_seq` bigint NOT NULL COMMENT '指令序号（Redis INCR 生成，设备内单调递增；重发同 seq = 幂等去重键）',
   `trigger_type` tinyint NOT NULL DEFAULT '1' COMMENT '触发源：1-管理端手动 2-自动规则 3-超时重试',
-  `command_status` tinyint NOT NULL DEFAULT '0' COMMENT '状态：0-已下发待到位 1-已到位 2-下发失败 3-重试超限转故障 4-执行失败(设备故障)',
+  `command_status` tinyint NOT NULL DEFAULT '0' COMMENT '状态：0-已下发待到位 1-已到位 2-下发失败 3-重试超限转故障 4-执行失败(设备故障) 5-被更新指令取代(0.2代际裁决)',
   `retry_count` int NOT NULL DEFAULT '0' COMMENT '已重试次数（超限阈值见 reason.barrier.max-retry）',
   `command_createtime` bigint NOT NULL COMMENT '下发时间戳(秒)',
   `command_updatetime` bigint DEFAULT NULL COMMENT '更新时间戳(秒)',
@@ -38,7 +38,7 @@ DROP TABLE IF EXISTS `device_alarm`;
 CREATE TABLE `device_alarm` (
   `alarm_id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   `device_no` varchar(32) NOT NULL COMMENT '设备编号',
-  `alarm_type` tinyint NOT NULL COMMENT '类型：1-指令重试超限 2-设备离线 3-状态对账不一致 4-设备故障上报',
+  `alarm_type` tinyint NOT NULL COMMENT '类型：1-指令重试超限 2-设备离线 3-状态对账不一致 4-设备故障上报 5-自动校正连续失败(0.3熔断) 6-动作卡死未到位(0.4巡检)',
   `alarm_content` varchar(512) DEFAULT NULL COMMENT '告警内容（人可读）',
   `alarm_handled` tinyint NOT NULL DEFAULT '0' COMMENT '处理状态：0-未处理 1-已处理',
   `alarm_createtime` bigint NOT NULL COMMENT '告警时间戳(秒)',

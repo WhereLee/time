@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 升降杆（物理杆的代码替身——"杆=执行者"对象）
@@ -34,10 +35,14 @@ public class Barrier {
     private final String deviceNo;
     private final String name;
     private final long moveMillis;
+    private final String bootId;
     private final EventReporter reporter;
 
     /** 动作执行线程：单线程按到达顺序执行动作（一根杆同一时刻只能做一个动作） */
     private final ExecutorService actionExecutor;
+
+    /** 事件序号（协议 v2：设备内单调递增，平台凭 (bootId,eventSeq) 拒绝重放/乱序；重启后从 1 重计） */
+    private final AtomicLong eventCounter = new AtomicLong();
 
     /** 当前物理状态（volatile：指令线程裁决 + 动作线程推进，跨线程可见） */
     private volatile BarrierState state = BarrierState.DOWN;
@@ -48,14 +53,24 @@ public class Barrier {
     /** 卡杆故障注入标志（true 时下一个动作执行到一半卡死转 FAULT——扮演物理世界的意外） */
     private volatile boolean faultInjected = false;
 
+    /** 静默故障注入标志（0.3 卡滞不终态：受理指令后无动作无上报——到位传感器失效/主控失聪） */
+    private volatile boolean stuckInjected = false;
+
+    /** 卡动作中注入标志（0.4：动作执行到 MOVING 后永不终态不上报——机械卡滞但没报故障） */
+    private volatile boolean stuckMovingInjected = false;
+
+    /** 最近被拒指令 seq（0.6 双线：被拒过的 seq 重试说真话——不再被幂等线吞成"假成功"） */
+    private volatile long lastRejectedSeq = -1L;
+
     /** 防砸信号（杆下探测器：true=有车，CLOSE 被互锁拒绝） */
     private volatile boolean vehiclePresent = false;
 
-    public Barrier(String deviceNo, String name, long moveMillis, EventReporter reporter) {
+    public Barrier(String deviceNo, String name, long moveMillis, EventReporter reporter, String bootId) {
         this.deviceNo = deviceNo;
         this.name = name;
         this.moveMillis = moveMillis;
         this.reporter = reporter;
+        this.bootId = bootId;
         ThreadFactory factory = r -> {
             Thread t = new Thread(r, "barrier-" + deviceNo);
             t.setDaemon(true);
@@ -76,6 +91,27 @@ public class Barrier {
         return state;
     }
 
+    /**
+     * 设备当前代际（协议 v2：重启后变化——平台据此重置事件序基线，重启自述不被旧序误拒）
+     */
+    public String getBootId() {
+        return bootId;
+    }
+
+    /**
+     * 已发出的事件序号（协议 v2：诊断/应答用——平台 QUERY_STATE 可问）
+     */
+    public long getEventSeq() {
+        return eventCounter.get();
+    }
+
+    /**
+     * 已受理的最大指令 seq（诊断/应答用——平台判断在途指令是否已被更新指令覆盖）
+     */
+    public long getLastSeq() {
+        return lastSeq;
+    }
+
     public boolean isFaultInjected() {
         return faultInjected;
     }
@@ -92,6 +128,11 @@ public class Barrier {
      * @throws IllegalStateException 动作在当前状态不合法（由 service 翻译后回执平台）
      */
     public synchronized boolean execute(BarrierAction action, long seq) {
+        //0.6 双线 seq：曾被拒绝的指令重试 -> 明确拒绝（状态不允许，重试无意义）——
+        //平台据此终止流水（SEND_FAILED），不再被幂等线吞成"已执行"假成功
+        if (seq == lastRejectedSeq) {
+            throw new IllegalStateException("该指令 seq=" + seq + " 曾被设备拒绝(状态不允许)，重试无意义");
+        }
         //幂等去重：平台超时重试的同 seq 指令、乱序到达的旧指令，都在此被吸收——杆不会动两次
         if (seq <= lastSeq) {
             log.info("[{}] 重复/乱序指令幂等忽略 seq={} (lastSeq={})", deviceNo, seq, lastSeq);
@@ -99,40 +140,55 @@ public class Barrier {
         }
         //状态机裁决
         if (state == BarrierState.MOVING) {
-            throw new IllegalStateException("动作进行中，请等待到位");
+            reject(seq, "动作进行中，请等待到位");
         }
         if (state == BarrierState.FAULT) {
-            throw new IllegalStateException("设备故障中，需人工复位后才接受指令");
+            reject(seq, "设备故障中，需人工复位后才接受指令");
         }
         BarrierState target;
         if (action == BarrierAction.OPEN) {
             if (state == BarrierState.UP) {
-                throw new IllegalStateException("已处于升起状态");
+                reject(seq, "已处于升起状态");
             }
             target = BarrierState.UP;
         } else {
             if (state == BarrierState.DOWN) {
-                throw new IllegalStateException("已处于降下状态");
+                reject(seq, "已处于降下状态");
             }
             //防砸互锁：杆下有车拒绝降杆——安全判断压过指令来源（手动/自动/重试一视同仁）
             if (vehiclePresent) {
-                throw new IllegalStateException("杆下有车，防砸互锁拒绝降杆");
+                reject(seq, "杆下有车，防砸互锁拒绝降杆");
             }
             target = BarrierState.DOWN;
         }
-        //受理：推进幂等线 + 置"动作中"（物理：杆已经开始动），再异步推进到位
+        //受理：推进幂等线
         lastSeq = seq;
+        //0.3 静默故障注入：受理但无动作无上报（状态保持原样）——平台侧连续校正将触发 AutoTask 熔断
+        if (stuckInjected) {
+            log.error("[{}] 静默故障注入：指令已受理但无动作无上报 seq={}（设备主控失聪）", deviceNo, seq);
+            return true;
+        }
+        //置"动作中"（物理：杆已经开始动），再异步推进到位
         state = BarrierState.MOVING;
         log.info("[{}] 开始执行 {} -> {}（seq={} 耗时 {}ms）", deviceNo, action, target, seq, moveMillis);
-        actionExecutor.submit(() -> runAction(target));
+        actionExecutor.submit(() -> runAction(target, seq));
         return true;
     }
 
     /**
-     * 动作推进（异步线程）：上报动作中 -> 耗时等待（模拟机械运动）-> 到位/卡杆 -> 上报结果
+     * 状态机拒绝：记录被拒 seq（0.6 双线）后抛出（拒绝不推进幂等线）
      */
-    private void runAction(BarrierState target) {
-        reporter.report(deviceNo, BarrierState.MOVING);
+    private void reject(long seq, String reason) {
+        lastRejectedSeq = seq;
+        throw new IllegalStateException(reason);
+    }
+
+    /**
+     * 动作推进（异步线程）：上报动作中 -> 耗时等待（模拟机械运动）-> 到位/卡杆 -> 上报结果。
+     * 事件携带引起动作的 commandSeq（协议 v2：平台凭它按 seq 精确销账）
+     */
+    private void runAction(BarrierState target, long commandSeq) {
+        reportEvent(BarrierState.MOVING, commandSeq);
         try {
             Thread.sleep(moveMillis);
         } catch (InterruptedException e) {
@@ -147,15 +203,21 @@ public class Barrier {
                 log.warn("[{}] 动作期间状态被外力改变(当前={})，本次动作结果作废", deviceNo, state);
                 return;
             }
+            //0.4 卡动作中注入：MOVING 后永不终态不上报（机械卡滞但未报故障）——
+            //台账将卡 MOVING，由平台巡检(MOVING_STUCK 告警)显式化，不在此替平台圆谎
+            if (stuckMovingInjected) {
+                log.error("[{}] 卡动作中注入：杆停在 MOVING 不终态不上报（机械卡滞，等巡检告警交人工）", deviceNo);
+                return;
+            }
             faulted = faultInjected;
             state = faulted ? BarrierState.FAULT : target;
         }
         //上报在锁外（HTTP IO 不进临界区）
         if (faulted) {
             log.warn("[{}] 动作卡死（故障注入）-> FAULT，等待人工复位", deviceNo);
-            reporter.report(deviceNo, BarrierState.FAULT);
+            reportEvent(BarrierState.FAULT, commandSeq);
         } else {
-            reporter.report(deviceNo, target);
+            reportEvent(target, commandSeq);
             log.info("[{}] 动作完成，当前状态={}", deviceNo, target);
         }
     }
@@ -169,12 +231,40 @@ public class Barrier {
     }
 
     /**
-     * 人工复位：清除故障注入；若杆停在 FAULT，复位后回落 DOWN 并上报（检修完成语义）
+     * 静默故障注入（0.3 卡滞不终态：到位传感器失效/主控失聪——受理但无动作无上报，
+     * 状态保持原样；平台连续校正未闭环将触发 AutoTask 熔断）
+     */
+    public synchronized void setStuck(boolean stuck) {
+        this.stuckInjected = stuck;
+        log.error("[{}] 静默故障注入置为 {}（受理不动作不上报——验证平台自动校正熔断）", deviceNo, stuck);
+    }
+
+    /**
+     * 卡动作中注入（0.4：机械卡滞但没报故障——动作到 MOVING 后永不终态不上报，
+     * 台账卡 MOVING，验证平台巡检告警）
+     */
+    public synchronized void setStuckMoving(boolean stuck) {
+        this.stuckMovingInjected = stuck;
+        log.error("[{}] 卡动作中注入置为 {}（MOVING 后不终态——验证平台 MOVING 巡检）", deviceNo, stuck);
+    }
+
+    public boolean isStuckInjected() {
+        return stuckInjected;
+    }
+
+    public boolean isStuckMovingInjected() {
+        return stuckMovingInjected;
+    }
+
+    /**
+     * 人工复位：清除全部注入（故障/静默/卡动作中）；若杆停在 FAULT，复位后回落 DOWN 并上报（检修完成语义）
      */
     public void recover() {
         boolean needReport;
         synchronized (this) {
             faultInjected = false;
+            stuckInjected = false;
+            stuckMovingInjected = false;
             needReport = (state == BarrierState.FAULT);
             if (needReport) {
                 state = BarrierState.DOWN;
@@ -182,7 +272,8 @@ public class Barrier {
         }
         if (needReport) {
             log.info("[{}] 人工复位：故障清除，杆回落 DOWN", deviceNo);
-            reporter.report(deviceNo, BarrierState.DOWN);
+            //复位是非指令驱动状态变化：commandSeq=null（协议 v2——平台只更新台账，不销任何流水）
+            reportEvent(BarrierState.DOWN, null);
         } else {
             log.info("[{}] 故障注入标志已清除（杆未处于故障态）", deviceNo);
         }
@@ -200,7 +291,8 @@ public class Barrier {
             state = forced;
         }
         log.warn("[{}] 外力改态 -> {}（非指令驱动，设备自述上报）", deviceNo, forced);
-        reporter.report(deviceNo, forced);
+        //外力改态是非指令驱动状态变化：commandSeq=null（协议 v2——平台只更新台账，不销任何流水）
+        reportEvent(forced, null);
     }
 
     /**
@@ -209,5 +301,13 @@ public class Barrier {
     public void setVehiclePresent(boolean present) {
         vehiclePresent = present;
         log.info("[{}] 防砸信号更新：杆下{}车", deviceNo, present ? "有" : "无");
+    }
+
+    /**
+     * 上报一次状态变化（协议 v2 事件载荷：设备内单调 eventSeq + 本进程 bootId）
+     */
+    private void reportEvent(BarrierState reported, Long commandSeq) {
+        long eventSeq = eventCounter.incrementAndGet();
+        reporter.report(deviceNo, reported, commandSeq, bootId, eventSeq);
     }
 }

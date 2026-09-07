@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
+import org.springframework.core.annotation.Order;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -21,6 +22,7 @@ import java.util.concurrent.TimeUnit;
  */
 @Slf4j
 @Aspect
+@Order(1) //先于 @ManualHold(2)：防重拦截抛错时 ManualHold 切面不执行 -> 被拦点击不留保持期
 @Component
 public class RepeatGuardAspect {
 

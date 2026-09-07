@@ -1,5 +1,7 @@
 package com.reason.barrier.service;
 
+import java.util.Map;
+
 /**
  * 设备服务（模拟器业务编排入口——controller 只做协议翻译，业务统一收口在此）
  *
@@ -46,4 +48,23 @@ public interface DeviceService {
      * 防砸信号更新：杆下探测器检测到车进出
      */
     String setVehicle(String deviceNo, boolean present);
+
+    /**
+     * 静默故障注入（0.3 卡滞不终态）：受理但无动作无上报——验证平台自动校正熔断
+     */
+    String setStuck(String deviceNo, boolean stuck);
+
+    /**
+     * 卡动作中注入（0.4）：动作到 MOVING 后永不终态——验证平台 MOVING 巡检告警
+     */
+    String setStuckMoving(String deviceNo, boolean stuck);
+
+    /**
+     * 状态查询（QUERY_STATE，协议 v2 §2.2）：返回设备实况快照——
+     * 平台监控对账与上行故障诊断时主动询问（替代查平台自己的台账快照）
+     *
+     * @return 快照 {deviceNo, state(code), bootId, eventSeq, lastCommandSeq}
+     * @throws IllegalArgumentException 设备不存在
+     */
+    Map<String, Object> queryState(String deviceNo);
 }

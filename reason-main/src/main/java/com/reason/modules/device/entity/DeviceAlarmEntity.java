@@ -33,6 +33,12 @@ public class DeviceAlarmEntity {
     @Schema(description = "处理状态：0-未处理 1-已处理")
     private Integer alarmHandled;
 
+    @Schema(description = "处理人(sys_user.user_id,0.4告警确认闭环)")
+    private Long alarmHandler;
+
+    @Schema(description = "处理时间戳(秒)")
+    private Long alarmHandledTime;
+
     @Schema(description = "告警时间戳(秒)")
     private Long alarmCreatetime;
 }

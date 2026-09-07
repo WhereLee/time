@@ -88,9 +88,8 @@ reason:
     expire: 604800
     header: token
   device:
-    # 设备通道访问令牌（/device/event 与 /device/heartbeat 由模拟器携 X-Device-Token 校验，须与 reason-barrier-sim 侧一致）
-    access-token: barrier-sim-token-2026
-    # 设备模拟服务地址（本地双进程联调；云部署改为内网地址）
+    # 设备模拟服务地址（本地双进程联调；接真实设备时此处即设备协议网关地址）
+    # 注：设备通道鉴权已升级为 per-device HMAC（0.5），共享口令 X-Device-Token 已退役
     sim-base-url: http://127.0.0.1:8300
   barrier:
     # 自动升降总开关（false=只手动，演示"纯人工接管"形态）

@@ -19,18 +19,24 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @DisplayName("升降杆状态机")
 class BarrierTest {
 
-    /** 记录型假上报通道（不碰 HTTP） */
+    /** 记录型假上报通道（不碰 HTTP；协议 v2：记录 commandSeq/bootId/eventSeq 载荷） */
     private static class FakeReporter implements EventReporter {
         final List<BarrierState> reported = new ArrayList<>();
+        final List<Long> commandSeqs = new ArrayList<>();
+        String lastBootId;
+        long lastEventSeq;
 
         @Override
-        public void report(String deviceNo, BarrierState state) {
+        public void report(String deviceNo, BarrierState state, Long commandSeq, String bootId, long eventSeq) {
             reported.add(state);
+            commandSeqs.add(commandSeq);
+            lastBootId = bootId;
+            lastEventSeq = eventSeq;
         }
     }
 
     private Barrier newBarrier(FakeReporter reporter, long moveMillis) {
-        return new Barrier("BARRIER-TEST", "测试杆", moveMillis, reporter);
+        return new Barrier("BARRIER-TEST", "测试杆", moveMillis, reporter, "boot-test-001");
     }
 
     @Test
@@ -44,8 +50,28 @@ class BarrierTest {
         assertThat(barrier.execute(BarrierAction.OPEN, 1)).isTrue();
         waitForState(barrier, BarrierState.UP);
 
-        //完整动作链：动作中 -> 到位，且每段都上报了
-        assertThat(reporter.reported).containsExactly(BarrierState.MOVING, BarrierState.UP);
+        //完整动作链：动作中 -> 到位，且每段都上报了（锁内置位与锁外上报有间隙，轮询等齐）
+        waitForExactly(reporter, BarrierState.MOVING, BarrierState.UP);
+        //协议 v2 载荷：指令驱动的事件携带 commandSeq=1（平台凭它按 seq 精确销账）
+        assertThat(reporter.commandSeqs).containsExactly(1L, 1L);
+        assertThat(reporter.lastBootId).isEqualTo("boot-test-001");
+        assertThat(reporter.lastEventSeq).isEqualTo(2L); //事件序号单调递增 1,2
+    }
+
+    @Test
+    @DisplayName("协议v2载荷：外力改态事件 commandSeq=null；动作中外部干扰不上报伪结果")
+    void 协议v2载荷_外力改态无指令引用() {
+        FakeReporter reporter = new FakeReporter();
+        Barrier barrier = newBarrier(reporter, 30);
+        barrier.execute(BarrierAction.OPEN, 1);
+        waitForState(barrier, BarrierState.UP);
+
+        //外力改态（tamper）是非指令驱动：commandSeq=null，平台只更新台账不销任何流水
+        barrier.tamper(BarrierState.DOWN);
+        waitForExactly(reporter, BarrierState.MOVING, BarrierState.UP, BarrierState.DOWN);
+        assertThat(reporter.commandSeqs).containsExactly(1L, 1L, null);
+        assertThat(reporter.lastBootId).isEqualTo("boot-test-001");
+        assertThat(reporter.lastEventSeq).isEqualTo(3L);
     }
 
     @Test
@@ -102,7 +128,7 @@ class BarrierTest {
         //乱序到达的旧 seq=3（即使是合法动作 CLOSE）：同样被吸收
         assertThat(barrier.execute(BarrierAction.CLOSE, 3)).isFalse();
         assertThat(barrier.getState()).isEqualTo(BarrierState.UP);
-        assertThat(reporter.reported).containsExactly(BarrierState.MOVING, BarrierState.UP);
+        waitForExactly(reporter, BarrierState.MOVING, BarrierState.UP);
 
         //更大的新 seq 正常受理
         assertThat(barrier.execute(BarrierAction.CLOSE, 6)).isTrue();
@@ -140,8 +166,8 @@ class BarrierTest {
         assertThat(barrier.execute(BarrierAction.OPEN, 1)).isTrue();
         waitForState(barrier, BarrierState.FAULT);
 
-        //上报链：动作中 -> 故障（失败显式化，设备主动喊）
-        assertThat(reporter.reported).containsExactly(BarrierState.MOVING, BarrierState.FAULT);
+        //上报链：动作中 -> 故障（失败显式化，设备主动喊）——锁内置位与锁外上报间有间隙，轮询等齐
+        waitForExactly(reporter, BarrierState.MOVING, BarrierState.FAULT);
     }
 
     @Test
@@ -173,9 +199,8 @@ class BarrierTest {
         barrier.recover();
         assertThat(barrier.getState()).isEqualTo(BarrierState.DOWN);
         assertThat(barrier.isFaultInjected()).isFalse();
-        //复位回落也是一次状态变化：必须上报（平台台账随设备回正）
-        assertThat(reporter.reported).containsExactly(
-                BarrierState.MOVING, BarrierState.FAULT, BarrierState.DOWN);
+        //复位回落也是一次状态变化：必须上报（平台台账随设备回正）——锁内置位与锁外上报有间隙，轮询等齐
+        waitForExactly(reporter, BarrierState.MOVING, BarrierState.FAULT, BarrierState.DOWN);
 
         //复位后恢复正常接受指令
         assertThat(barrier.execute(BarrierAction.OPEN, 2)).isTrue();
@@ -197,6 +222,77 @@ class BarrierTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    @DisplayName("0.3静默故障：受理但无动作无上报（状态保持原样）——平台校正熔断的触发面")
+    void 静默故障_受理不动作() {
+        FakeReporter reporter = new FakeReporter();
+        Barrier barrier = newBarrier(reporter, 30);
+        barrier.setStuck(true);
+
+        //受理成功（平台以为已送达）但杆无动作无上报，状态保持 DOWN
+        assertThat(barrier.execute(BarrierAction.OPEN, 1)).isTrue();
+        assertThat(barrier.getState()).isEqualTo(BarrierState.DOWN);
+        assertThat(reporter.reported).isEmpty();
+
+        //恢复后正常动作
+        barrier.setStuck(false);
+        assertThat(barrier.execute(BarrierAction.OPEN, 2)).isTrue();
+        waitForState(barrier, BarrierState.UP);
+    }
+
+    @Test
+    @DisplayName("0.4卡动作中：MOVING 后永不终态不上报（台账卡 MOVING——平台巡检告警的触发面）")
+    void 卡动作中_不终态不上报() {
+        FakeReporter reporter = new FakeReporter();
+        Barrier barrier = newBarrier(reporter, 30);
+        barrier.setStuckMoving(true);
+
+        barrier.execute(BarrierAction.OPEN, 1);
+        //等待：动作完成后仍卡 MOVING，且只上报过 MOVING（无 UP 终态）
+        long deadline = System.currentTimeMillis() + 2000;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                TimeUnit.MILLISECONDS.sleep(20);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        assertThat(barrier.getState()).isEqualTo(BarrierState.MOVING);
+        assertThat(reporter.reported).containsExactly(BarrierState.MOVING);
+
+        //recover 清除注入后可恢复
+        barrier.recover();
+        assertThat(barrier.isStuckMovingInjected()).isFalse();
+    }
+
+    @Test
+    @DisplayName("0.6双线seq：被拒过的指令重试说真话（不再被幂等线吞成假成功）")
+    void 双线seq_被拒重试明确拒绝() {
+        FakeReporter reporter = new FakeReporter();
+        Barrier barrier = newBarrier(reporter, 30);
+        //升起态下 CLOSE 被拒（防砸场景等价：先升到 UP 再注入车）
+        barrier.execute(BarrierAction.OPEN, 1);
+        waitForState(barrier, BarrierState.UP);
+        barrier.setVehiclePresent(true);
+
+        //CLOSE seq=2 被防砸互锁拒绝
+        assertThatThrownBy(() -> barrier.execute(BarrierAction.CLOSE, 2))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("防砸");
+        //车走，受理 CLOSE seq=3（幂等线推进到 3）
+        barrier.setVehiclePresent(false);
+        assertThat(barrier.execute(BarrierAction.CLOSE, 3)).isTrue();
+        waitForState(barrier, BarrierState.DOWN);
+
+        //平台重试被拒过的 seq=2：0.6 双线 -> 明确拒绝（而非 seq<=lastSeq(3) 被吞成"已执行"）
+        assertThatThrownBy(() -> barrier.execute(BarrierAction.CLOSE, 2))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("曾被设备拒绝");
+        //从未见过的旧 seq=1 仍是幂等忽略（真重复）
+        assertThat(barrier.execute(BarrierAction.OPEN, 1)).isFalse();
+    }
+
     /** 轮询等待目标状态（单测不做 sleep 硬等，最多 2 秒） */
     private void waitForState(Barrier barrier, BarrierState target) {
         long deadline = System.currentTimeMillis() + 2000;
@@ -209,5 +305,23 @@ class BarrierTest {
             }
         }
         assertThat(barrier.getState()).isEqualTo(target);
+    }
+
+    /** 轮询至上报序列与期望一致（锁内置位与锁外上报有间隙；最多 1 秒） */
+    private void waitForExactly(FakeReporter reporter, BarrierState... expected) {
+        long deadline = System.currentTimeMillis() + 1000;
+        while (System.currentTimeMillis() < deadline) {
+            if (reporter.reported.size() >= expected.length
+                    && reporter.reported.equals(java.util.Arrays.asList(expected))) {
+                return;
+            }
+            try {
+                TimeUnit.MILLISECONDS.sleep(5);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        assertThat(reporter.reported).containsExactly(expected);
     }
 }

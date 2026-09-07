@@ -10,10 +10,12 @@ package com.reason.common.exception;
 
 import com.reason.common.utils.Result;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 
 /**
@@ -35,6 +37,17 @@ public class RRExceptionHandler {
 
 		log.error(e.getMessage(), e);
 		return result;
+	}
+
+	/**
+	 * ResponseStatusException 透传（0.7：设备通道 401/400 等语义化状态不被全局 Exception 兜底吞成 200）
+	 * ——全局 handleException 只应处理真正未预期的异常；显式状态异常必须保持 HTTP 语义
+	 */
+	@ExceptionHandler(ResponseStatusException.class)
+	public ResponseEntity<Result> handleResponseStatus(ResponseStatusException e) {
+		Result result = Result.error(e.getStatusCode().value(), e.getReason());
+		log.warn("HTTP 状态异常透传 status={} reason={}", e.getStatusCode().value(), e.getReason());
+		return ResponseEntity.status(e.getStatusCode()).body(result);
 	}
 
 	@ExceptionHandler(NoHandlerFoundException.class)

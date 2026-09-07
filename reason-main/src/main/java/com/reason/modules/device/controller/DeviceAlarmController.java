@@ -12,8 +12,12 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
 
 /**
  * 设备告警管理端接口（"故障态+告警"机制的查询侧）
@@ -32,12 +36,29 @@ public class DeviceAlarmController extends AbstractController {
     /**
      * 告警分页查询
      */
-    @Operation(summary = "告警分页查询", description = "deviceNo/alarmType/alarmHandled 精确过滤；按时间倒序；权限：device:alarm:list")
+    @Operation(summary = "告警分页查询", description = "deviceNo/alarmType/alarmHandled 精确过滤；按时间倒序；alarmHandled 缺省只看未确认；权限：device:alarm:list")
     @ApiOperationSupport(order = 1)
     @SysLog(module = "设备告警", func = "查询", value = "查询设备告警列表")
     @GetMapping("/list")
     @PreAuthorize("hasAuthority('device:alarm:list')")
     public Result<PageUtils> list(DeviceAlarmForm form) {
         return Result.ok(deviceAlarmService.queryPage(form));
+    }
+
+    /**
+     * 告警确认处理（0.4 告警闭环：处置+关闭，记录处理人/时间——应急通道不疲劳）
+     */
+    @Operation(summary = "告警确认处理", description = "确认告警已处置：0->1 并记录处理人与时间；重复确认/不存在的告警拒绝；权限：device:alarm:handle")
+    @ApiOperationSupport(order = 2)
+    @SysLog(module = "设备告警", func = "处理", value = "确认处理设备告警")
+    @PostMapping("/handle")
+    @PreAuthorize("hasAuthority('device:alarm:handle')")
+    public Result<String> handle(@RequestBody Map<String, Long> body) {
+        Long alarmId = body.get("alarmId");
+        if (alarmId == null) {
+            throw new com.reason.common.exception.RRException("告警ID不能为空");
+        }
+        deviceAlarmService.handle(alarmId, getUserId());
+        return Result.ok();
     }
 }

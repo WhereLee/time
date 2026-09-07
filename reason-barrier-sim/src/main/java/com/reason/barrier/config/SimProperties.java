@@ -34,23 +34,33 @@ public class SimProperties {
     private int heartbeatIntervalSeconds = 10;
 
     /**
-     * 平台侧设备通道令牌（X-Device-Token，须与 reason-main 的 reason.device.access-token 一致）
-     */
-    private String token;
-
-    /**
      * 升降动作耗时毫秒（模拟机械动作非瞬时）
      */
     private long moveMillis = 3000;
 
     /**
-     * 安装的设备清单（与平台台账 deviceNo 对齐）
+     * 安装的设备清单（与平台台账 deviceNo 对齐；secret 为 0.5 per-device HMAC 密钥——
+     * 环境变量注入（仓库零明文），须与平台 device_record.device_secret 同值）
      */
     private List<DeviceCfg> devices = new ArrayList<>();
+
+    /**
+     * 按设备号取 HMAC 密钥（null=未配置——fail secure：验签必然失败）
+     */
+    public String secretOf(String deviceNo) {
+        for (DeviceCfg cfg : devices) {
+            if (cfg.getDeviceNo().equals(deviceNo)) {
+                return cfg.getSecret();
+            }
+        }
+        return null;
+    }
 
     @Data
     public static class DeviceCfg {
         private String deviceNo;
         private String name;
+        /** HMAC 密钥（${ENV:} 环境变量注入——仓库零明文） */
+        private String secret;
     }
 }

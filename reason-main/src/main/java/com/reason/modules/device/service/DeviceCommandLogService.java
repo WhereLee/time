@@ -37,16 +37,25 @@ public interface DeviceCommandLogService extends IService<DeviceCommandLogEntity
     void markSendFailed(Long commandId);
 
     /**
-     * 设备事件回报到位：找该设备最近一条"待到位且动作匹配"的流水置 ARRIVED
+     * 设备事件回报到位（协议 v2 证据驱动闭环）：按 (deviceNo, commandSeq, action) 精确销账——
+     * 事件必须携带它响应的指令 seq 才能闭环，不再"按动作猜最近一条"（伪造/错代销账在此被堵）
      *
-     * @return 是否命中流水（false=事件与任何在途指令无关，如外力改态/心跳自述）
+     * @return 是否命中流水（false=该 seq 流水不存在或已终态——如外力改态事件携带的 seq 已销/被拒）
      */
-    boolean markArrived(String deviceNo, String action);
+    boolean markArrivedBySeq(String deviceNo, long seq, String action);
 
     /**
      * 设备上报 FAULT：该设备所有在途指令置 EXEC_FAILED（执行中断，不再重试，等人工复位）
      */
     void markExecFailed(String deviceNo);
+
+    /**
+     * 设备上报 FAULT（带 commandSeq，0.6）：精确中断引起故障的那条指令（协议 v2 §3.2——
+     * 故障事件携带 seq 时按 seq 归属，跨动作多条在途不再全断；无 seq 的故障走设备级全断）
+     *
+     * @return 是否命中（false=该 seq 无在途流水，幂等无害）
+     */
+    boolean markExecFailedBySeq(String deviceNo, long seq);
 
     /**
      * 超时扫描：所有"待到位且下发时间早于 now-timeoutSeconds"的流水
@@ -64,6 +73,14 @@ public interface DeviceCommandLogService extends IService<DeviceCommandLogEntity
      * @return 是否命中（false = 已被并发路径推进，如设备事件恰好到位——调用方据此放弃告警）
      */
     boolean markRetryExceeded(Long commandId);
+
+    /**
+     * 指令被更新代际取代（0.2 代际裁决）：流水置 SUPERSEDED（CAS：仅当仍为 PENDING 才生效）——
+     * 旧代际指令永不会执行，终止挂账（不再重试/不再等待到位事件）
+     *
+     * @return 是否命中（false = 已被其他路径推进到终态，幂等无害）
+     */
+    boolean markSuperseded(Long commandId);
 
     /**
      * 管理端分页查询

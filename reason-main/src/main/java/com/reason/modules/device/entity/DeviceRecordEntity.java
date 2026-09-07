@@ -52,6 +52,19 @@ public class DeviceRecordEntity implements Serializable {
     @Schema(description = "更新时间戳(秒)")
     private Long deviceUpdatetime;
 
+    @Schema(description = "最近事件bootId(设备重启代际,协议v2序守卫：重启后事件序号归零靠它区分代际)")
+    private String deviceLastBootId;
+
+    @Schema(description = "最近事件序号(协议v2序守卫：同bootId内单调递增,重放/乱序/陈旧覆盖在此被拒)")
+    private Long deviceLastEventSeq;
+
+    /**
+     * 设备 HMAC 密钥（0.5 per-device 凭证）：登记时生成随机值，仓库零明文；
+     * 设备侧持同值对事件/心跳做 HMAC 签名，平台验签——共享口令换个体凭证（T1 修复）
+     */
+    @Schema(description = "设备HMAC密钥(0.5 per-device凭证,平台登记时生成)")
+    private String deviceSecret;
+
     /**
      * 在线状态（展示字段，不落库）：在线是"此刻"的事实（Redis 心跳 key TTL 判定），
      * 落库即过时——查询时实时填充，台账表里没有这一列

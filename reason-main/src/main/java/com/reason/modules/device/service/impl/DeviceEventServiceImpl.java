@@ -2,6 +2,7 @@ package com.reason.modules.device.service.impl;
 
 import com.reason.modules.device.enums.AlarmType;
 import com.reason.modules.device.enums.DeviceState;
+import com.reason.modules.device.form.DeviceEventForm;
 import com.reason.modules.device.service.DeviceAlarmService;
 import com.reason.modules.device.service.DeviceCommandLogService;
 import com.reason.modules.device.service.DeviceEventService;
@@ -10,10 +11,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * 设备事件处理编排实现
+ * 设备事件处理编排实现（协议 v2）
  *
- * <p>顺序有意为之：先台账（设备说的话立即成为快照）→ 再流水（指令闭环的账）→ 再告警（喊人）。
- * 台账更新失败（未登记设备）会抛错中断——事件处理不做"半截子"：账本和告警都以台账更新成功为前提。</p>
+ * <p>顺序有意为之：先台账（设备说的话立即成为快照，带序守卫）→ 再流水（按证据精确闭环）→
+ * 再告警（喊人）。台账更新失败（未登记设备）抛错中断；同代际旧序事件（重放/乱序迟到）被
+ * 序守卫拒绝后幂等丢弃（false），不推进任何流水——事件处理不做"半截子"。</p>
  */
 @Slf4j
 @Service("deviceEventService")
@@ -32,19 +34,42 @@ public class DeviceEventServiceImpl implements DeviceEventService {
     }
 
     @Override
-    public void handleStateEvent(String deviceNo, int stateCode) {
-        //1. 台账更新（反馈闭环铁律的唯一写入路径）
-        deviceRecordService.updateStateByEvent(deviceNo, stateCode);
+    public void handleStateEvent(DeviceEventForm form) {
+        //状态码合法性校验（未知码=协议错，快速失败）
+        int stateCode = DeviceState.fromCode(form.getState()).getCode();
+        String deviceNo = form.getDeviceNo();
+        Long commandSeq = form.getCommandSeq();
 
-        //2. 按状态语义推进指令流水
+        //1. 台账更新（协议 v2 序守卫：同代际旧序/重放 → false，幂等丢弃不推进流水）
+        boolean accepted = deviceRecordService.updateStateByEventWithSeq(
+                deviceNo, stateCode, form.getBootId(), form.getEventSeq());
+        if (!accepted) {
+            return;
+        }
+
+        //2. 按事件-动作映射推进流水（销账必须证据驱动：只有事件携带 commandSeq 才按 seq 精确销账）
         if (stateCode == DeviceState.UP.getCode()) {
-            //升到位：OPEN 指令闭环（未命中流水 = 非指令驱动的状态变化，如外力改态后设备自报，正常）
-            commandLogService.markArrived(deviceNo, "OPEN");
+            if (commandSeq != null) {
+                commandLogService.markArrivedBySeq(deviceNo, commandSeq, "OPEN");
+            }
+            //commandSeq 空 = 外力改态到位：只更新台账，不动流水（无指令可销）
+            //设备恢复运动（UP/DOWN 到位）= 状态类告警自动关闭（0.4：离线/卡死/自动校正失败随恢复标记）
+            deviceAlarmService.markRecovered(deviceNo);
         } else if (stateCode == DeviceState.DOWN.getCode()) {
-            commandLogService.markArrived(deviceNo, "CLOSE");
+            if (commandSeq != null) {
+                commandLogService.markArrivedBySeq(deviceNo, commandSeq, "CLOSE");
+            }
+            deviceAlarmService.markRecovered(deviceNo);
         } else if (stateCode == DeviceState.FAULT.getCode()) {
             //故障 = 执行中断：在途指令永远不会到位，账本显式记 EXEC_FAILED（不再重试）+ 告警交人工
-            commandLogService.markExecFailed(deviceNo);
+            if (commandSeq != null) {
+                //0.6 按 seq 归属中断（协议 v2 §3.2）：事件携带引起故障的 seq，精确中断该条——
+                //手动+自动双触发源交叉窗口下，跨动作多条在途不再全断，故障归因到具体指令
+                commandLogService.markExecFailedBySeq(deviceNo, commandSeq);
+            } else {
+                //无 seq 的故障（外力/未知源）：设备级全断（心跳通道 FAULT 同此语义）
+                commandLogService.markExecFailed(deviceNo);
+            }
             deviceAlarmService.raise(deviceNo, AlarmType.DEVICE_FAULT,
                     "设备上报故障态(卡杆等)，在途指令已中断，需人工处置后复位");
         }

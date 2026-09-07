@@ -19,7 +19,9 @@ public enum CommandStatus {
     /** 重试超限转故障：多次重发同 seq 仍未到位，停止重试并告警 */
     RETRY_EXCEEDED(3, "重试超限转故障"),
     /** 执行失败：设备执行中上报 FAULT（卡杆等），指令中断不再重试，等人工复位 */
-    EXEC_FAILED(4, "执行失败(设备故障)");
+    EXEC_FAILED(4, "执行失败(设备故障)"),
+    /** 已被更新指令取代（0.2 代际裁决：更晚代际指令已下发，本指令永不会执行，终止挂账） */
+    SUPERSEDED(5, "被更新指令取代");
 
     private final int code;
     private final String desc;

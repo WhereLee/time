@@ -11,16 +11,17 @@ sim:
   heartbeat-url: http://127.0.0.1:8200/api/device/heartbeat
   # 心跳间隔秒（须小于平台 reason.barrier.heartbeat-timeout-seconds=30，留丢包容量）
   heartbeat-interval-seconds: 10
-  # 设备通道令牌（须与 reason-main application.yml 的 reason.device.access-token 一致）
-  token: barrier-sim-token-2026
   # 升降动作耗时（毫秒）：模拟真实设备动作非瞬时
   move-millis: 3000
-  # 本进程"安装"的物理杆清单（deviceNo 与平台台账登记对齐——契约握手）
+  # 本进程"安装"的物理杆清单（deviceNo 与平台台账登记对齐——契约握手；
+  # secret=0.5 per-device HMAC 密钥，环境变量注入(仓库零明文)，须与平台 device_record.device_secret 同值）
   devices:
     - deviceNo: BARRIER-E-01
       name: 东门一号杆
+      secret: ${BARRIER_E01_SECRET:}
     - deviceNo: BARRIER-W-02
       name: 西门二号杆
+      secret: ${BARRIER_W02_SECRET:}
 
 logging:
   level:

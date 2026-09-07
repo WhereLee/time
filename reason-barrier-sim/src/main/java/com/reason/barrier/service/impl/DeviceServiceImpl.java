@@ -8,6 +8,9 @@ import com.reason.barrier.service.DeviceService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * 设备服务实现
  *
@@ -68,6 +71,36 @@ public class DeviceServiceImpl implements DeviceService {
         Barrier barrier = requireBarrier(deviceNo);
         barrier.setVehiclePresent(present);
         return present ? "防砸信号：杆下有车（CLOSE 将被互锁拒绝）" : "防砸信号：杆下无车（恢复可降）";
+    }
+
+    @Override
+    public String setStuck(String deviceNo, boolean stuck) {
+        Barrier barrier = requireBarrier(deviceNo);
+        barrier.setStuck(stuck);
+        return stuck ? "静默故障已注入（受理不动作不上报）" : "静默故障已清除";
+    }
+
+    @Override
+    public String setStuckMoving(String deviceNo, boolean stuck) {
+        Barrier barrier = requireBarrier(deviceNo);
+        barrier.setStuckMoving(stuck);
+        return stuck ? "卡动作中已注入（MOVING 后不终态）" : "卡动作中已清除";
+    }
+
+    @Override
+    public Map<String, Object> queryState(String deviceNo) {
+        //QUERY_STATE 应答源：设备实况快照（含代际/事件序/最近指令 seq——平台诊断与对账用）
+        Barrier barrier = requireBarrier(deviceNo);
+        Map<String, Object> snapshot = new HashMap<>();
+        snapshot.put("deviceNo", barrier.getDeviceNo());
+        snapshot.put("state", barrier.getState().getCode());
+        snapshot.put("bootId", barrier.getBootId());
+        snapshot.put("eventSeq", barrier.getEventSeq());
+        snapshot.put("lastCommandSeq", barrier.getLastSeq());
+        log.info("状态查询应答 deviceNo={} state={} bootId={} eventSeq={} lastCommandSeq={}",
+                deviceNo, barrier.getState(), barrier.getBootId(),
+                barrier.getEventSeq(), barrier.getLastSeq());
+        return snapshot;
     }
 
     private String execute(String deviceNo, BarrierAction action, long seq) {

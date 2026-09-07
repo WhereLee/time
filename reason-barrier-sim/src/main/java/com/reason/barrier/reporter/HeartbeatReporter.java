@@ -1,7 +1,9 @@
 package com.reason.barrier.reporter;
 
+import com.reason.barrier.config.DeviceSignature;
 import com.reason.barrier.config.SimProperties;
 import com.reason.barrier.model.Barrier;
+import com.reason.barrier.network.NetworkCondition;
 import com.reason.barrier.registry.BarrierRegistry;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -37,12 +39,14 @@ public class HeartbeatReporter {
 
     private final SimProperties properties;
     private final BarrierRegistry registry;
+    private final NetworkCondition network;
     private final RestTemplate restTemplate;
     private final ScheduledExecutorService scheduler;
 
-    public HeartbeatReporter(SimProperties properties, BarrierRegistry registry) {
+    public HeartbeatReporter(SimProperties properties, BarrierRegistry registry, NetworkCondition network) {
         this.properties = properties;
         this.registry = registry;
+        this.network = network;
         //心跳通道独立超时：心跳是轻请求，快速失败不积压（挤占下一轮周期）
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(2000);
@@ -71,10 +75,23 @@ public class HeartbeatReporter {
 
     private void reportAll(String scene) {
         for (Barrier barrier : registry.all()) {
+            //网络剧本：上行方向断（T20 单向断：事件+心跳都上不去）——心跳跟随方向断，不消费单次丢包
+            if (network.shouldDropHeartbeat()) {
+                log.warn("[网络剧本] 心跳被丢弃(上行阻断) deviceNo={}", barrier.getDeviceNo());
+                continue;
+            }
             try {
                 HttpHeaders headers = new HttpHeaders();
                 headers.setContentType(MediaType.APPLICATION_JSON);
-                headers.set("X-Device-Token", properties.getToken());
+                //0.5 per-device HMAC（心跳签名：deviceNo|state）——共享口令已退役
+                headers.set("X-Device-No", barrier.getDeviceNo());
+                String secret = properties.secretOf(barrier.getDeviceNo());
+                if (secret == null || secret.isEmpty()) {
+                    log.error("[{}] {}心跳取消：设备未配置密钥（联调需环境变量注入）", barrier.getDeviceNo(), scene);
+                    continue;
+                }
+                headers.set("X-Device-Sign", DeviceSignature.sign(secret,
+                        DeviceSignature.canonicalHeartbeat(barrier.getDeviceNo(), barrier.getState().getCode())));
                 Map<String, Object> body = Map.of(
                         "deviceNo", barrier.getDeviceNo(),
                         "state", barrier.getState().getCode());
@@ -82,7 +99,8 @@ public class HeartbeatReporter {
                         new HttpEntity<>(body, headers), Map.class);
                 log.debug("[{}] {}上报 state={}", barrier.getDeviceNo(), scene, barrier.getState());
             } catch (Exception e) {
-                //心跳失败不重试：下一轮周期就是天然重试；持续失败由平台离线告警兜底可见
+                //心跳失败不重试：下一轮周期就是天然重试；持续失败由平台离线告警兜底可见；
+                //平台 4xx（密钥失配）在 error 日志立即可见（0.7：不再"只看 HTTP 状态记成功"）
                 log.warn("[{}] {}上报失败 cause={}", barrier.getDeviceNo(), scene, e.getMessage());
             }
         }

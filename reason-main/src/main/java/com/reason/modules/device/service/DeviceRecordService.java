@@ -23,11 +23,21 @@ public interface DeviceRecordService extends IService<DeviceRecordEntity> {
     void saveRecord(DeviceRecordForm form, Long userId);
 
     /**
-     * 设备事件驱动的状态更新（反馈闭环铁律的唯一写入路径）：
+     * 设备事件驱动的状态更新（反馈闭环铁律的唯一写入路径，心跳校正入口——无事件序守卫）：
      * 台账状态只信设备上报，禁止指令侧/管理端直接改
      *
      * @param deviceNo 设备编号
      * @param stateCode 新状态码（DeviceState）
      */
     void updateStateByEvent(String deviceNo, int stateCode);
+
+    /**
+     * 事件通道的状态更新（协议 v2 序守卫入口）：同 bootId（设备代际）内只接受单调递增事件，
+     * 重放/乱序/陈旧覆盖在此被拒；bootId 变化=设备重启新代际，接受并重置基线。
+     * 与心跳入口（updateStateByEvent）分离：心跳是自述对账信号，不参与事件序守卫。
+     *
+     * @return true=事件被接受并落库；false=同代际旧序/重复事件，协议容忍的幂等丢弃（不告警）
+     * @throws RRException 档案不存在（未登记设备上报=配置错位，显式失败）
+     */
+    boolean updateStateByEventWithSeq(String deviceNo, int stateCode, String bootId, long eventSeq);
 }

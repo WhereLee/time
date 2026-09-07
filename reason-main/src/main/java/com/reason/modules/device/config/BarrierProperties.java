@@ -62,4 +62,22 @@ public class BarrierProperties {
      * 同类告警去重窗口秒数（持续异常不刷屏：窗口内同设备同类型只落一条）
      */
     private int alarmDedupSeconds = 300;
+
+    /**
+     * 自动校正熔断阈值（0.3）：AutoTask 连续 N 轮校正均未闭环（该设备存在超龄 PENDING 流水）
+     * 即停自动并告警——平台观测连续失败，不再无限轰杆（停自动判据从"设备自认 FAULT"扩为"平台观测失败"）
+     */
+    private int autoFailStreakThreshold = 3;
+
+    /**
+     * 台账卡 MOVING 判定阈值秒数（0.4）：台账 MOVING 超过该值（远超动作耗时+上报延迟）
+     * = 动作卡死未到位（静默故障），巡检告警交人工
+     */
+    private int movingStuckSeconds = 30;
+
+    /**
+     * 平台启动宽限期秒数（0.8）：启动后该窗口内不做离线判定——平台重启期间心跳 TTL 自然过期，
+     * 若恢复后立即扫描会全量误报 OFFLINE（宽限 > 重启耗时 + TTL）
+     */
+    private int onlineStartupGraceSeconds = 90;
 }

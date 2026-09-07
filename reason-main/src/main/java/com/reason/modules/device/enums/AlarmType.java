@@ -17,7 +17,11 @@ public enum AlarmType {
     /** 状态对账不一致：心跳自述与台账快照不符（外力改态/漂移），已由心跳校正 */
     STATE_MISMATCH(3, "状态对账不一致"),
     /** 设备故障上报：设备侧显式上报 FAULT（卡杆等机械故障） */
-    DEVICE_FAULT(4, "设备故障上报");
+    DEVICE_FAULT(4, "设备故障上报"),
+    /** 自动校正连续失败：AutoTask 熔断（0.3：平台观测连续未闭环，停自动避免无限轰杆） */
+    AUTO_CORRECT_FAILED(5, "自动校正连续失败"),
+    /** 动作卡死未到位：台账卡 MOVING 超阈值（0.4：静默故障显式化，交人工处置） */
+    MOVING_STUCK(6, "动作卡死未到位");
 
     private final int code;
     private final String desc;

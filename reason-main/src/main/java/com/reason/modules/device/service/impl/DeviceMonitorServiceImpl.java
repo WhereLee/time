@@ -9,8 +9,10 @@ import com.reason.modules.device.entity.DeviceRecordEntity;
 import com.reason.modules.device.enums.AlarmType;
 import com.reason.modules.device.enums.DeviceState;
 import com.reason.modules.device.service.DeviceAlarmService;
+import com.reason.modules.device.service.DeviceCommandLogService;
 import com.reason.modules.device.service.DeviceMonitorService;
 import com.reason.modules.device.service.DeviceRecordService;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -35,17 +37,29 @@ public class DeviceMonitorServiceImpl implements DeviceMonitorService {
     private final DeviceRecordDao recordDao;
     private final DeviceRecordService deviceRecordService;
     private final DeviceAlarmService deviceAlarmService;
+    private final DeviceCommandLogService commandLogService;
+
+    /** 启动时刻（0.8：启动宽限期内不做离线判定——平台重启期间 TTL 自然过期，防全量误报） */
+    private long startupTime;
 
     public DeviceMonitorServiceImpl(StringRedisTemplate stringRedisTemplate,
                                     BarrierProperties barrierProperties,
                                     DeviceRecordDao recordDao,
                                     DeviceRecordService deviceRecordService,
-                                    DeviceAlarmService deviceAlarmService) {
+                                    DeviceAlarmService deviceAlarmService,
+                                    DeviceCommandLogService commandLogService) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.barrierProperties = barrierProperties;
         this.recordDao = recordDao;
         this.deviceRecordService = deviceRecordService;
         this.deviceAlarmService = deviceAlarmService;
+        this.commandLogService = commandLogService;
+    }
+
+    @PostConstruct
+    public void init() {
+        this.startupTime = System.currentTimeMillis() / 1000;
+        log.info("设备监控就绪：启动宽限期 {}s（期间不做离线判定）", barrierProperties.getOnlineStartupGraceSeconds());
     }
 
     @Override
@@ -92,6 +106,10 @@ public class DeviceMonitorServiceImpl implements DeviceMonitorService {
         //3. 故障自述告警（设备说自己 FAULT——持续故障由去重窗口控制提醒频率）
         if (stateCode != null && stateCode == DeviceState.FAULT.getCode()) {
             deviceAlarmService.raise(deviceNo, AlarmType.DEVICE_FAULT, "设备心跳自述故障态(卡杆等)，需人工处置");
+            //0.6 FAULT 双通道收口：心跳自述 FAULT 与事件通道 FAULT 同语义——在途指令执行中断
+            //（此前只告警不中断：同一故障走心跳通道时流水停在 PENDING，monitor 会对故障设备重试
+            // 至 RETRY_EXCEEDED——账本终态由"哪条通道先到"决定，收口后与通道无关）
+            commandLogService.markExecFailed(deviceNo);
         }
 
         //4. 刷新在线 key（覆盖式 SET + TTL：每次心跳续命，停止心跳后 TTL 自然过期 = 离线）
@@ -107,6 +125,14 @@ public class DeviceMonitorServiceImpl implements DeviceMonitorService {
 
     @Override
     public void scanOffline() {
+        //0.8 启动宽限：平台重启期间心跳 TTL 自然过期，恢复后立即扫描会全量误报 OFFLINE——
+        //宽限（>重启耗时+TTL）后再开始离线判定
+        long nowSec = System.currentTimeMillis() / 1000;
+        if (nowSec - startupTime < barrierProperties.getOnlineStartupGraceSeconds()) {
+            log.debug("启动宽限期内跳过离线扫描（剩余 {}s）",
+                    barrierProperties.getOnlineStartupGraceSeconds() - (nowSec - startupTime));
+            return;
+        }
         //只扫"接入过"的设备（状态≠未接入）：从未上线的设备没有心跳是常态，不算离线异常
         List<DeviceRecordEntity> records = recordDao.selectList(new LambdaQueryWrapper<DeviceRecordEntity>()
                 .ne(DeviceRecordEntity::getDeviceState, DeviceState.NOT_CONNECTED.getCode()));

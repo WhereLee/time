@@ -1,6 +1,7 @@
 package com.reason.barrier.controller;
 
 import com.reason.barrier.model.Barrier;
+import com.reason.barrier.network.NetworkCondition;
 import com.reason.barrier.registry.BarrierRegistry;
 import com.reason.barrier.service.DeviceService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,10 +31,12 @@ public class SimController {
 
     private final DeviceService deviceService;
     private final BarrierRegistry registry;
+    private final NetworkCondition network;
 
-    public SimController(DeviceService deviceService, BarrierRegistry registry) {
+    public SimController(DeviceService deviceService, BarrierRegistry registry, NetworkCondition network) {
         this.deviceService = deviceService;
         this.registry = registry;
+        this.network = network;
     }
 
     /** 卡杆故障注入：下一个动作执行到一半卡死转 FAULT */
@@ -72,6 +75,30 @@ public class SimController {
         }
     }
 
+    /** 静默故障注入（0.3 卡滞不终态：受理但不动作不上报——验证平台自动校正熔断） */
+    @PostMapping("/stuck")
+    public Map<String, Object> stuck(@RequestBody Map<String, Object> req) {
+        String deviceNo = (String) req.get("deviceNo");
+        boolean on = Boolean.parseBoolean(String.valueOf(req.get("on")));
+        try {
+            return Map.of("code", 0, "msg", deviceService.setStuck(deviceNo, on));
+        } catch (IllegalArgumentException e) {
+            return Map.of("code", 1, "msg", e.getMessage());
+        }
+    }
+
+    /** 卡动作中注入（0.4：动作到 MOVING 后永不终态——验证平台 MOVING 巡检告警） */
+    @PostMapping("/stuck-moving")
+    public Map<String, Object> stuckMoving(@RequestBody Map<String, Object> req) {
+        String deviceNo = (String) req.get("deviceNo");
+        boolean on = Boolean.parseBoolean(String.valueOf(req.get("on")));
+        try {
+            return Map.of("code", 0, "msg", deviceService.setStuckMoving(deviceNo, on));
+        } catch (IllegalArgumentException e) {
+            return Map.of("code", 1, "msg", e.getMessage());
+        }
+    }
+
     /** 全部杆的实时快照（状态/故障注入/防砸信号——物理世界的真相在这，平台台账只是快照） */
     @GetMapping("/status")
     public Map<String, Object> status() {
@@ -84,9 +111,35 @@ public class SimController {
             item.put("stateCode", barrier.getState().getCode());
             item.put("faultInjected", barrier.isFaultInjected());
             item.put("vehiclePresent", barrier.isVehiclePresent());
+            item.put("bootId", barrier.getBootId());
+            item.put("eventSeq", barrier.getEventSeq());
+            item.put("lastCommandSeq", barrier.getLastSeq());
             devices.add(item);
         }
         return Map.of("code", 0, "devices", devices);
+    }
+
+    /**
+     * 网络剧本注入（应用层注入器——逻辑形态：设备链路不可信，故障可本地制造、可进自动化剧本）
+     *
+     * <p>body：{blockUpstream, blockDownstream, dropNextEvent} 三开关（缺省 false）。
+     * blockUpstream=上行断（事件+心跳都上不去——T20 单向断剧本）；
+     * blockDownstream=下行断（入站指令/查询被拒——反向单向断剧本）；
+     * dropNextEvent=丢下一次事件上报（验证上报失败退避重试）。</p>
+     */
+    @PostMapping("/network")
+    public Map<String, Object> network(@RequestBody Map<String, Object> req) {
+        boolean up = Boolean.parseBoolean(String.valueOf(req.get("blockUpstream")));
+        boolean events = Boolean.parseBoolean(String.valueOf(req.get("blockEvents")));
+        boolean down = Boolean.parseBoolean(String.valueOf(req.get("blockDownstream")));
+        boolean drop = Boolean.parseBoolean(String.valueOf(req.get("dropNextEvent")));
+        network.setBlockUpstream(up);
+        network.setBlockEvents(events);
+        network.setBlockDownstream(down);
+        network.setDropNextEvent(drop);
+        return Map.of("code", 0,
+                "msg", String.format("网络剧本已设：上行阻断=%s 事件独立断=%s 下行阻断=%s 丢下一次事件=%s",
+                        up, events, down, drop));
     }
 
     private Map<String, Object> invoke(String deviceNo, java.util.function.Function<String, String> op) {

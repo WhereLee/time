@@ -2,16 +2,20 @@ package com.reason.modules.device.task;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.reason.modules.device.config.BarrierProperties;
-import com.reason.modules.device.config.BarrierRedisKeys;
 import com.reason.modules.device.dao.DeviceRecordDao;
+import com.reason.modules.device.entity.DeviceCommandLogEntity;
 import com.reason.modules.device.entity.DeviceRecordEntity;
+import com.reason.modules.device.enums.AlarmType;
+import com.reason.modules.device.enums.CommandStatus;
 import com.reason.modules.device.enums.DeviceState;
 import com.reason.modules.device.service.BarrierTimeRule;
+import com.reason.modules.device.service.DeviceAlarmService;
+import com.reason.modules.device.service.DeviceCommandLogService;
 import com.reason.modules.device.service.DeviceCommandService;
 import com.reason.modules.device.service.DeviceMonitorService;
+import com.reason.modules.device.service.ManualHoldService;
 import com.reason.modules.job.task.ITask;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalTime;
@@ -22,16 +26,12 @@ import java.util.List;
  *
  * <p>采用"周期对账"而非"准点触发"（a+b 方案取 b）：每轮只问一个问题——
  * "此刻应然（时间规则）vs 当前实然（台账快照）"，不一致就校正。这一个动作统一治了四个边界：
- * <ul>
- *   <li>准点触发错过（重启/宕机/misfire DoNothing 不补跑）→ 下一轮对账自然补上；</li>
- *   <li>时钟漂移 → 对账不信任任何一次触发结果，只信当前比对；</li>
- *   <li>规则变更 → 改配置后下一轮即按新规则校正，无需迁移；</li>
- *   <li>断电恢复/外力改态 → 设备重新上线后心跳对账纠正台账，本任务再纠正杆。</li>
- * </ul>
+ * 准点触发错过/时钟漂移/规则变更/断电恢复——对账不信任任何单次触发结果，只信当前比对。
  * 准点性代价：误差 ≤ 1 轮（分钟级），对"白天放行"场景足够。</p>
  *
- * <p>仲裁顺序（每道闸都有明确理由）：手动保持期让位 → 离线不打扰 → 动作中不抢 →
- * 故障停自动 → 应然=实然跳过 → 下发校正。</p>
+ * <p>仲裁顺序（每道闸都有明确理由）：手动保持期让位（0.2 收口 ManualHoldService，
+ * Redis+DB 双写）→ 熔断（0.3：平台观测连续未闭环则停自动，不无限轰杆）→ 离线不打扰 →
+ * 动作中不抢 → 故障停自动 → 应然=实然跳过 → 下发校正。</p>
  */
 @Slf4j
 @Component("barrierAutoTask")
@@ -42,20 +42,26 @@ public class BarrierAutoTask implements ITask {
     private final DeviceRecordDao recordDao;
     private final DeviceMonitorService monitorService;
     private final DeviceCommandService commandService;
-    private final StringRedisTemplate stringRedisTemplate;
+    private final DeviceCommandLogService commandLogService;
+    private final DeviceAlarmService alarmService;
+    private final ManualHoldService manualHoldService;
 
     public BarrierAutoTask(BarrierProperties properties,
                            BarrierTimeRule timeRule,
                            DeviceRecordDao recordDao,
                            DeviceMonitorService monitorService,
                            DeviceCommandService commandService,
-                           StringRedisTemplate stringRedisTemplate) {
+                           DeviceCommandLogService commandLogService,
+                           DeviceAlarmService alarmService,
+                           ManualHoldService manualHoldService) {
         this.properties = properties;
         this.timeRule = timeRule;
         this.recordDao = recordDao;
         this.monitorService = monitorService;
         this.commandService = commandService;
-        this.stringRedisTemplate = stringRedisTemplate;
+        this.commandLogService = commandLogService;
+        this.alarmService = alarmService;
+        this.manualHoldService = manualHoldService;
     }
 
     @Override
@@ -86,16 +92,20 @@ public class BarrierAutoTask implements ITask {
     }
 
     /**
-     * 单台设备对账：四道仲裁闸 + 应然/实然比对 + 校正下发
+     * 单台设备对账：仲裁闸 + 熔断计数 + 应然/实然比对 + 校正下发
      */
     private void reconcileOne(DeviceRecordEntity record, int desired, String action) {
         String deviceNo = record.getDeviceNo();
         int actual = record.getDeviceState();
 
-        //仲裁1：手动保持期——人在接管（@ManualHold 写的 Redis key），自动规则让位
-        if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(BarrierRedisKeys.MANUAL_HOLD_PREFIX + deviceNo))) {
+        //仲裁1：手动保持期——人在接管（Redis+DB 双写判定），自动规则让位
+        if (manualHoldService.isActive(deviceNo)) {
             log.debug("手动保持期内，自动规则让位 deviceNo={}", deviceNo);
             return;
+        }
+        //熔断维护（0.3）：该设备是否存在"超龄未闭环"流水（上轮校正下发后既没到位也没被 monitor 终结）
+        if (!maintainFailStreak(deviceNo, record)) {
+            return; //本轮已熔断跳过
         }
         //仲裁2：离线设备不下发——发了也是 SEND_FAILED 白记账；等它上线，心跳对账+下轮校正自然接管
         if (!monitorService.isOnline(deviceNo)) {
@@ -105,7 +115,7 @@ public class BarrierAutoTask implements ITask {
         if (actual == DeviceState.MOVING.getCode()) {
             return;
         }
-        //仲裁4：故障停自动——FAULT 交人工处置，自动重试只会反复撞同一堵墙（"停自动"是故障机制的一部分）
+        //仲裁4：故障停自动——FAULT 交人工处置，自动重试只会反复撞同一堵墙
         if (actual == DeviceState.FAULT.getCode()) {
             return;
         }
@@ -117,5 +127,39 @@ public class BarrierAutoTask implements ITask {
         log.info("自动对账发现偏差 deviceNo={} 实然={} 应然={} -> 下发校正指令 {}",
                 deviceNo, actual, desired, action);
         commandService.sendByRule(deviceNo, action);
+    }
+
+    /**
+     * 熔断裁决（0.3）：该设备最近 N 条自动校正流水（trigger=AUTO_RULE）是否全部未闭环
+     * （PENDING/SEND_FAILED/SUPERSEDED/EXEC_FAILED 都算——含被 monitor 代际裁决取代的），
+     * 全部未闭环 = 平台观测连续失败 -> 熔断停自动 + 告警。
+     * 判据用"流水窗口"而非"最新一条超龄"：monitor 的代际裁决会把旧指令标 SUPERSEDED 并让
+     * 最新一条保持年轻，只看最新一条会永远不超龄（熔断与代际裁决互踩）；窗口判据两者自洽。
+     * 熔断持续到窗口内出现 ARRIVED（人工复位/恢复后自动校正成功）自动解除
+     *
+     * @return false=已熔断（本轮跳过不下发）
+     */
+    private boolean maintainFailStreak(String deviceNo, DeviceRecordEntity record) {
+        int threshold = properties.getAutoFailStreakThreshold();
+        List<DeviceCommandLogEntity> recent = commandLogService.list(new LambdaQueryWrapper<DeviceCommandLogEntity>()
+                .eq(DeviceCommandLogEntity::getDeviceNo, deviceNo)
+                .eq(DeviceCommandLogEntity::getTriggerType, com.reason.modules.device.enums.TriggerType.AUTO_RULE.getCode())
+                .orderByDesc(DeviceCommandLogEntity::getCommandSeq)
+                .last("LIMIT " + threshold));
+        if (recent.size() < threshold) {
+            //历史不足 N 条自动校正：无从判"连续失败"，放行
+            return true;
+        }
+        boolean allFailed = recent.stream()
+                .allMatch(l -> l.getCommandStatus() != CommandStatus.ARRIVED.getCode());
+        if (allFailed) {
+            log.warn("自动校正连续 {} 条未闭环 -> 熔断停自动 deviceNo={}（最近 seq={} 未到位）",
+                    threshold, deviceNo, recent.get(0).getCommandSeq());
+            alarmService.raise(deviceNo, AlarmType.AUTO_CORRECT_FAILED,
+                    String.format("自动校正连续 %d 条未闭环(最近 seq=%d)，停自动交人工——疑似到位传感器失效/半断电/主控失聪",
+                            threshold, recent.get(0).getCommandSeq()));
+            return false;
+        }
+        return true;
     }
 }

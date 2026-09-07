@@ -109,20 +109,22 @@ public class DeviceCommandLogServiceImpl extends ServiceImpl<DeviceCommandLogDao
     }
 
     @Override
-    public boolean markArrived(String deviceNo, String action) {
-        //最近一条"待到位且动作匹配"的流水（LIMIT 1：理论上同设备同动作在途最多一条，防御性取最近）
-        DeviceCommandLogEntity pending = this.getOne(new LambdaQueryWrapper<DeviceCommandLogEntity>()
+    public boolean markArrivedBySeq(String deviceNo, long seq, String action) {
+        //协议 v2：事件携带 commandSeq，单条条件 UPDATE 按 (deviceNo, seq, action, PENDING) 精确闭环
+        //——CAS 守卫（PENDING 才销）保证并发路径（监控重试/事件到达）不覆盖终态；
+        //未命中 = 该 seq 无在途流水（已销/已终态/从未存在），记日志不告警（幂等）
+        boolean arrived = this.update(new LambdaUpdateWrapper<DeviceCommandLogEntity>()
                 .eq(DeviceCommandLogEntity::getDeviceNo, deviceNo)
+                .eq(DeviceCommandLogEntity::getCommandSeq, seq)
                 .eq(DeviceCommandLogEntity::getCommandAction, action)
                 .eq(DeviceCommandLogEntity::getCommandStatus, CommandStatus.PENDING.getCode())
-                .orderByDesc(DeviceCommandLogEntity::getCommandCreatetime)
-                .last("LIMIT 1"));
-        if (pending == null) {
-            return false;
-        }
-        boolean arrived = casStatus(pending.getCommandId(), CommandStatus.PENDING, CommandStatus.ARRIVED);
+                .set(DeviceCommandLogEntity::getCommandStatus, CommandStatus.ARRIVED.getCode())
+                .set(DeviceCommandLogEntity::getCommandUpdatetime, System.currentTimeMillis() / 1000));
         if (arrived) {
-            log.info("指令到位闭环 deviceNo={} action={} seq={}", deviceNo, action, pending.getCommandSeq());
+            log.info("指令按 seq 精确闭环 deviceNo={} action={} seq={}", deviceNo, action, seq);
+        } else {
+            log.debug("到位事件未命中在途流水(已闭环/已终态/非指令驱动) deviceNo={} action={} seq={}",
+                    deviceNo, action, seq);
         }
         return arrived;
     }
@@ -138,6 +140,21 @@ public class DeviceCommandLogServiceImpl extends ServiceImpl<DeviceCommandLogDao
         if (updated) {
             log.warn("设备故障中断在途指令 deviceNo={}", deviceNo);
         }
+    }
+
+    @Override
+    public boolean markExecFailedBySeq(String deviceNo, long seq) {
+        //0.6 按 seq 归属中断：故障事件携带 commandSeq 时精确中断该条（PENDING 守卫防覆盖终态）
+        boolean updated = this.update(new LambdaUpdateWrapper<DeviceCommandLogEntity>()
+                .eq(DeviceCommandLogEntity::getDeviceNo, deviceNo)
+                .eq(DeviceCommandLogEntity::getCommandSeq, seq)
+                .eq(DeviceCommandLogEntity::getCommandStatus, CommandStatus.PENDING.getCode())
+                .set(DeviceCommandLogEntity::getCommandStatus, CommandStatus.EXEC_FAILED.getCode())
+                .set(DeviceCommandLogEntity::getCommandUpdatetime, System.currentTimeMillis() / 1000));
+        if (updated) {
+            log.warn("设备故障按 seq 归属中断指令 deviceNo={} seq={}", deviceNo, seq);
+        }
+        return updated;
     }
 
     @Override
@@ -161,6 +178,11 @@ public class DeviceCommandLogServiceImpl extends ServiceImpl<DeviceCommandLogDao
     @Override
     public boolean markRetryExceeded(Long commandId) {
         return casStatus(commandId, CommandStatus.PENDING, CommandStatus.RETRY_EXCEEDED);
+    }
+
+    @Override
+    public boolean markSuperseded(Long commandId) {
+        return casStatus(commandId, CommandStatus.PENDING, CommandStatus.SUPERSEDED);
     }
 
     @Override

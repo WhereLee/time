@@ -17,6 +17,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.UUID;
+
 /**
  * 设备台账服务实现
  *
@@ -76,6 +78,9 @@ public class DeviceRecordServiceImpl extends ServiceImpl<DeviceRecordDao, Device
         entity.setDeviceType(form.getDeviceType() == null ? 1 : form.getDeviceType());
         entity.setLocation(form.getLocation());
         entity.setDeviceState(DeviceState.NOT_CONNECTED.getCode()); //建档恒为未接入，状态由设备事件驱动
+        //0.5 per-device 凭证：登记即生成 HMAC 密钥（32hex 随机）——仓库零明文，DB 存储，
+        //设备侧配置同值（真实流程为设备出厂/安装时烧录，样例为联调配置同步）
+        entity.setDeviceSecret(UUID.randomUUID().toString().replace("-", ""));
         entity.setDeviceRemark(form.getDeviceRemark());
         entity.setDeviceCreator(userId);
         long now = System.currentTimeMillis() / 1000;
@@ -86,7 +91,7 @@ public class DeviceRecordServiceImpl extends ServiceImpl<DeviceRecordDao, Device
 
     @Override
     public void updateStateByEvent(String deviceNo, int stateCode) {
-        //单条条件 UPDATE（效率：省一次查询；原子：无查改间隙竞态）
+        //心跳校正入口（无事件序守卫）：单条条件 UPDATE（效率：省一次查询；原子：无查改间隙竞态）
         //baseMapper.update 返回影响行数：0 = 档案不存在（模拟器里有、平台没建档 = 配置错位），
         //显式失败让设备侧发现；相同状态重复上报幂等无害（影响行数 1，直接覆盖）
         DeviceRecordEntity update = new DeviceRecordEntity();
@@ -98,6 +103,41 @@ public class DeviceRecordServiceImpl extends ServiceImpl<DeviceRecordDao, Device
             throw new RRException("未登记的设备上报事件: " + deviceNo);
         }
         //单一时钟源：时间戳以服务器为准，不采信设备时钟
-        log.info("设备事件驱动状态更新 deviceNo={} state={}", deviceNo, stateCode);
+        log.info("设备事件驱动状态更新(心跳校正) deviceNo={} state={}", deviceNo, stateCode);
+    }
+
+    @Override
+    public boolean updateStateByEventWithSeq(String deviceNo, int stateCode, String bootId, long eventSeq) {
+        //协议 v2 序守卫（contracts/PROTOCOL-V2.md §3.3）：单条条件 UPDATE 原子完成"守卫+写状态+推进基线"
+        //接受条件（三取一）：
+        //  1) 台账从未记录过事件基线（建档后首包）
+        //  2) bootId 不同 = 设备重启新代际（重启自述/重启后首批事件不被旧序误拒）
+        //  3) 同 bootId 且 eventSeq 更大 = 正常递增
+        //拒绝：同 bootId 且 eventSeq <= last（重放/乱序迟到/陈旧覆盖）——协议容忍的幂等丢弃
+        DeviceRecordEntity update = new DeviceRecordEntity();
+        update.setDeviceState(stateCode);
+        update.setDeviceLastBootId(bootId);
+        update.setDeviceLastEventSeq(eventSeq);
+        update.setDeviceUpdatetime(System.currentTimeMillis() / 1000);
+        int rows = baseMapper.update(update, new LambdaQueryWrapper<DeviceRecordEntity>()
+                .eq(DeviceRecordEntity::getDeviceNo, deviceNo)
+                .and(w -> w.isNull(DeviceRecordEntity::getDeviceLastBootId)
+                        .or().ne(DeviceRecordEntity::getDeviceLastBootId, bootId)
+                        .or(o -> o.eq(DeviceRecordEntity::getDeviceLastBootId, bootId)
+                                .lt(DeviceRecordEntity::getDeviceLastEventSeq, eventSeq))));
+        if (rows == 0) {
+            //区分拒绝原因：档案不存在（配置错位，显式失败）vs 同代际旧序（幂等丢弃，不告警）
+            DeviceRecordEntity record = this.getOne(new LambdaQueryWrapper<DeviceRecordEntity>()
+                    .eq(DeviceRecordEntity::getDeviceNo, deviceNo));
+            if (record == null) {
+                throw new RRException("未登记的设备上报事件: " + deviceNo);
+            }
+            log.info("事件序守卫拒绝(同代际旧序/重放,幂等丢弃) deviceNo={} bootId={} eventSeq={} 已受理last={}/{}",
+                    deviceNo, bootId, eventSeq, record.getDeviceLastBootId(), record.getDeviceLastEventSeq());
+            return false;
+        }
+        log.info("事件驱动状态更新(序守卫通过) deviceNo={} state={} bootId={} eventSeq={}",
+                deviceNo, stateCode, bootId, eventSeq);
+        return true;
     }
 }
