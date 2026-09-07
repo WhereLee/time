@@ -23,6 +23,17 @@ public class SimProperties {
     private String eventUrl;
 
     /**
+     * 平台心跳上报地址（平台侧 /api/device/heartbeat）
+     */
+    private String heartbeatUrl;
+
+    /**
+     * 心跳间隔秒数（需小于平台侧心跳超时阈值 reason.barrier.heartbeat-timeout-seconds，
+     * 留足网络抖动余量：阈值 30s 对应间隔 10s，连续丢 2 次心跳才判离线）
+     */
+    private int heartbeatIntervalSeconds = 10;
+
+    /**
      * 平台侧设备通道令牌（X-Device-Token，须与 reason-main 的 reason.device.access-token 一致）
      */
     private String token;

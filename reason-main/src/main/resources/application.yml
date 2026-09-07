@@ -88,10 +88,26 @@ reason:
     expire: 604800
     header: token
   device:
-    # 设备通道访问令牌（/device/event 由模拟器携 X-Device-Token 校验，须与 reason-barrier-sim 侧一致）
+    # 设备通道访问令牌（/device/event 与 /device/heartbeat 由模拟器携 X-Device-Token 校验，须与 reason-barrier-sim 侧一致）
     access-token: barrier-sim-token-2026
     # 设备模拟服务地址（本地双进程联调；云部署改为内网地址）
     sim-base-url: http://127.0.0.1:8300
+  barrier:
+    # 自动升降总开关（false=只手动，演示"纯人工接管"形态）
+    auto-enabled: true
+    # 白天放行窗口 [open, close)：窗口内应然=升起，窗口外应然=降下；open>close 表示跨午夜窗口
+    auto-open-time: "08:00"
+    auto-close-time: "18:00"
+    # 心跳超时秒数（Redis 在线 key 的 TTL：超时无心跳 = 离线）
+    heartbeat-timeout-seconds: 30
+    # 指令到位超时秒数（下发后多久没等到目标状态事件 = 超时，触发重试）
+    command-timeout-seconds: 60
+    # 指令重试上限（超限停止重试并告警——失败显式化，不悄悄无限重试）
+    max-retry: 3
+    # 手动保持期分钟数（手动指令后自动规则让位的窗口）
+    manual-hold-minutes: 30
+    # 同类告警去重窗口秒数（持续异常不刷屏）
+    alarm-dedup-seconds: 300
 
 jasypt:
   encryptor:

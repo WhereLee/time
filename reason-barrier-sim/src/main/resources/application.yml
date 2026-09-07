@@ -1,10 +1,16 @@
 # 设备模拟器（十公里外的杆）：独立进程，仅 web 依赖
 server:
   port: 8300
+  # 监听面收敛：/sim/* 故障注入口无鉴权（定位是本地演示工具），只绑回环地址防公网暴露
+  address: 127.0.0.1
 
 sim:
   # 平台事件上报地址（reason-main 的 context-path=/api）
   event-url: http://127.0.0.1:8200/api/device/event
+  # 平台心跳上报地址（周期自述 + 上电自述，平台侧 Redis TTL 判在线）
+  heartbeat-url: http://127.0.0.1:8200/api/device/heartbeat
+  # 心跳间隔秒（须小于平台 reason.barrier.heartbeat-timeout-seconds=30，留丢包容量）
+  heartbeat-interval-seconds: 10
   # 设备通道令牌（须与 reason-main application.yml 的 reason.device.access-token 一致）
   token: barrier-sim-token-2026
   # 升降动作耗时（毫秒）：模拟真实设备动作非瞬时
@@ -18,4 +24,4 @@ sim:
 
 logging:
   level:
-    com.reason.sim: INFO
+    com.reason.barrier: INFO

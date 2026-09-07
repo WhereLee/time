@@ -7,24 +7,34 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.reason.common.exception.RRException;
 import com.reason.common.utils.PageUtils;
 import com.reason.common.utils.StringUtils;
+import com.reason.modules.device.config.BarrierRedisKeys;
 import com.reason.modules.device.dao.DeviceRecordDao;
 import com.reason.modules.device.entity.DeviceRecordEntity;
 import com.reason.modules.device.enums.DeviceState;
 import com.reason.modules.device.form.DeviceRecordForm;
 import com.reason.modules.device.service.DeviceRecordService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 /**
  * 设备台账服务实现
  *
- * <p>块1 只落"档案"：登记 + 分页查询。登记建档状态恒为 0-未接入——状态是设备说的，
- * 不是登记人填的（反馈闭环铁律的起点，后续块由事件接收侧驱动更新）。</p>
+ * <p>档案职责：登记 + 分页查询 + 事件驱动的状态更新（铁律唯一写入路径）。
+ * 登记建档状态恒为 0-未接入——状态是设备说的，不是登记人填的。
+ * 列表附带在线状态（Redis 心跳 key EXISTS 实时判定，不落库）——直接读 Redis 而不经过
+ * DeviceMonitorService，避免台账⇄监控双向依赖（监控服务已依赖台账的状态写入路径）。</p>
  */
 @Slf4j
 @Service("deviceRecordService")
 public class DeviceRecordServiceImpl extends ServiceImpl<DeviceRecordDao, DeviceRecordEntity>
         implements DeviceRecordService {
+
+    private final StringRedisTemplate stringRedisTemplate;
+
+    public DeviceRecordServiceImpl(StringRedisTemplate stringRedisTemplate) {
+        this.stringRedisTemplate = stringRedisTemplate;
+    }
 
     @Override
     public PageUtils queryPage(DeviceRecordForm form) {
@@ -40,6 +50,11 @@ public class DeviceRecordServiceImpl extends ServiceImpl<DeviceRecordDao, Device
                         .eq(form.getDeviceState() != null, DeviceRecordEntity::getDeviceState, form.getDeviceState())
                         .orderByDesc(DeviceRecordEntity::getDeviceCreatetime)
         );
+        //在线状态实时填充（Redis EXISTS：心跳 key 未过期即在线）——展示字段不落库，落库即过时
+        for (DeviceRecordEntity record : page.getRecords()) {
+            record.setOnline(Boolean.TRUE.equals(
+                    stringRedisTemplate.hasKey(BarrierRedisKeys.ONLINE_PREFIX + record.getDeviceNo())));
+        }
         return new PageUtils(page);
     }
 

@@ -1,6 +1,7 @@
 package com.reason.modules.device.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -50,4 +51,12 @@ public class DeviceRecordEntity implements Serializable {
 
     @Schema(description = "更新时间戳(秒)")
     private Long deviceUpdatetime;
+
+    /**
+     * 在线状态（展示字段，不落库）：在线是"此刻"的事实（Redis 心跳 key TTL 判定），
+     * 落库即过时——查询时实时填充，台账表里没有这一列
+     */
+    @Schema(description = "是否在线（心跳 TTL 实时判定，不落库）")
+    @TableField(exist = false)
+    private Boolean online;
 }

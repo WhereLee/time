@@ -6,7 +6,7 @@ import com.reason.common.utils.Result;
 import com.reason.modules.device.config.DeviceChannelProperties;
 import com.reason.modules.device.enums.DeviceState;
 import com.reason.modules.device.form.DeviceEventForm;
-import com.reason.modules.device.service.DeviceRecordService;
+import com.reason.modules.device.service.DeviceEventService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,7 +32,7 @@ public class DeviceEventController {
     private static final String TOKEN_HEADER = "X-Device-Token";
 
     @Autowired
-    private DeviceRecordService deviceRecordService;
+    private DeviceEventService deviceEventService;
 
     @Autowired
     private DeviceChannelProperties channelProperties;
@@ -45,13 +45,13 @@ public class DeviceEventController {
     @PostMapping
     public Result<String> report(@RequestHeader(TOKEN_HEADER) String token,
                                  @RequestBody DeviceEventForm form) {
-        //设备通道鉴权（样例：共享口令比对；快速失败不静默）
-        if (!channelProperties.getAccessToken().equals(token)) {
+        //设备通道鉴权（样例：共享口令常量时间比对，收口在 DeviceChannelProperties.matches；快速失败不静默）
+        if (!channelProperties.matches(token)) {
             throw new RRException("设备令牌无效");
         }
-        //状态码合法性校验（未知码=协议错，快速失败）
+        //状态码合法性校验（未知码=协议错，快速失败）；事件语义编排（台账/流水/告警）收口在 DeviceEventService
         DeviceState state = DeviceState.fromCode(form.getState());
-        deviceRecordService.updateStateByEvent(form.getDeviceNo(), state.getCode());
+        deviceEventService.handleStateEvent(form.getDeviceNo(), state.getCode());
         return Result.ok();
     }
 }

@@ -6,6 +6,8 @@ import com.reason.barrier.reporter.EventReporter;
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Component;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -42,6 +44,13 @@ public class BarrierRegistry {
      */
     public Barrier get(String deviceNo) {
         return barriers.get(deviceNo);
+    }
+
+    /**
+     * 本进程安装的全部设备（心跳周期上报/状态快照用；不可变视图防外部篡改注册表）
+     */
+    public Collection<Barrier> all() {
+        return Collections.unmodifiableCollection(barriers.values());
     }
 
     public int size() {
