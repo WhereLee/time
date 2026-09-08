@@ -39,8 +39,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 设备事件 MQ 通道集成测试（阶段2，F2——真实 RocketMQ 容器，端到端消费语义）
  *
- * <p>执行位置：仅 CI（GitHub Actions 独立 mq-it job，-Dgroups=mq）——本机无 Docker 时由
- * 命名约定 *IT 天然隔离（surefire 只匹配 *Test，failsafe 只匹配 *IT）。</p>
+ * <p><b>CI 降级声明（规格 F2 策略③，2026-09-08）</b>：本 IT 不在 CI 跑（ci.yml 无 mq-it job，
+ * build job -DexcludedGroups=mq 排除）。4 次 CI 红根因链：①容器就绪等待信号措辞差异（已修）
+ * ②容器内 mqadmin 建 topic 静默失败/namesrv 路由不同步（40402）③gRPC 协议 producer 不支持
+ * autoCreateTopic（5.x proxy 层特性，发送前必须 fetch 路由）。MQ 端到端验证改由本地真实 broker
+ * 剧本承担（F3 三条全过：双写/broker 故障/平台重启续消费，证据见 block-records/阶段2-实施记录.md §三）。
+ * 本地跑法（需 Docker + topic 预建）：mvn -pl reason-main verify -Dgroups=mq -Dit.test=DeviceEventMqIT；
+ * 保留作为未来 CI 容器方案修复后的回归资产。</p>
  *
  * <p>容器链：MySQL（挂 db/01-05 全量脚本）+ Redis + RocketMQ namesrv + broker（--enable-proxy
  * 内嵌 gRPC 8081，两容器共享 Network，broker 经容器别名 namesrv 解析）。</p>
