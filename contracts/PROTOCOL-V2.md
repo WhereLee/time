@@ -94,4 +94,32 @@
 | 0.5 | 3.1 签名域 | HMAC/nonce/per-device secret + 下行凭证 + 管理面分离 |
 | 0.6 | 3.2 FAULT 行细化 | FAULT 按 seq 归属中断在途 + sim 双线 seq（已执行/已拒绝） |
 | 0.7 | §5 | 错误语义对称化 + state 可空 |
-| 阶段2 | 传输适配层 | 事件走 MQ 时：3.1 报文原样入消息体，签名置 message property（双写期过渡，D6） |
+| 阶段2 | 传输适配层（§7） | 事件走 MQ 时：3.1 报文原样入消息体，签名置 message property（双写期过渡，D6） |
+
+## 7. MQ 传输适配层（阶段2 定稿——事件走 RocketMQ，与 HTTP 双写并行）
+
+> 语义层（§1/§3）不变；本节只定义传输适配（分层原则：换载体不换语义）。心跳不走 MQ（D3 定稿：判活要有界时延，broker 故障时心跳+自述对账仍活）。下行指令仍 HTTP（QUERY_STATE 依赖同步请求应答）。
+
+### 7.1 消息信封
+- **topic**：`device-event`（单读写队列 writeQueueNums=readQueueNums=1——全局有序，D5）；**消费组**：`platform-device-event`（broker 侧 retryMaxTimes=3，耗尽进死信 `%DLQ%platform-device-event`）。
+- **消息体**：§3.1 报文原样 JSON（deviceNo/state/commandSeq/bootId/eventSeq，与 HTTP body 完全同构，commandSeq 可空）。
+- **message property**：`X-Device-No`（设备号）、`X-Device-Sign`（签名，canonical 与 §3.1 同一拼法 `deviceNo|state|commandSeq|bootId|eventSeq`，HMAC-SHA256 per-device secret）。
+- **keys**：`{deviceNo}-{eventSeq}`（broker 侧排查锚点，不参与业务）。
+- **信封完整性**：property `X-Device-No` 必须与消息体 `deviceNo` 一致（不一致=信封被拼改，毒消息）。
+
+### 7.2 保序约束（D5，双端铁律）
+- sim 侧：单发送线程 + 有界队列按序 drain；**发送失败的事件队首持留**（不让位重排——失败事件若让位，后续更大 eventSeq 先到平台，本事件恢复后反被 §3.3 序守卫当旧序拒=真丢数据）；退避 1s/2s/3s/4s/5s→超限转 5s 节拍等 broker 恢复；队列满（默认 500）丢弃最旧记 error（平台 QUERY_STATE/对账兜底）。
+- 平台侧：消费并发度=1（单消费线程 receive(1)→处理→ack）；不引入任何并发消费。
+
+### 7.3 消费语义与失败分级（协议 §5 错误语义在 MQ 侧的映射）
+| 场景 | MQ 侧处置 | 对应 HTTP 语义 |
+|---|---|---|
+| 验签失败/未登记设备/协议垃圾/信封不一致 | **ack 丢弃 + error 日志**（毒消息不入重投循环） | 401/400 |
+| 业务拒绝（RRException，如未登记） | ack 丢弃 + error 日志 | 400 |
+| 业务瞬时异常（DB 抖动等） | **不 ack**，broker 重投（retryMaxTimes=3）→ 耗尽进死信 | 5xx 重试 |
+| 重复投递 | 业务幂等吸收（§3.3 序守卫 + 按 seq 精确销账），consumer 不做额外去重 | — |
+| 平台停机窗口 | 未 ack 消息由 broker 持久化，重启后续消费（零丢失来源） | — |
+
+### 7.4 双写期（D6，本阶段终态）
+- sim 事件同时发 HTTP（§3，行为与阶段1 完全一致）与 MQ（本节）；平台两路径并行处理同事件，由业务幂等吸收（后到路径被序守卫拒=正常对照痕迹）。
+- HTTP 通道退役判定在阶段 3 量下回归通过后，另立契约修订；`sim.mq.enabled`/`reason.device.mq.enabled` 任一关闭即退化纯 HTTP 形态（回滚开关）。
