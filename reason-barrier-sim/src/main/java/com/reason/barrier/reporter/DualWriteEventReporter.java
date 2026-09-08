@@ -32,8 +32,9 @@ public class DualWriteEventReporter implements EventReporter {
     }
 
     @Override
-    public void report(String deviceNo, BarrierState state, Long commandSeq, String bootId, long eventSeq) {
-        httpReporter.report(deviceNo, state, commandSeq, bootId, eventSeq);
-        mqReporter.ifAvailable(mq -> mq.report(deviceNo, state, commandSeq, bootId, eventSeq));
+    public void report(String deviceNo, BarrierState state, Long commandSeq, String bootId, long eventSeq, String traceId) {
+        //两通道共用同一 traceId：HTTP header / MQ property 各自承载，平台侧两路径日志可同号对照
+        httpReporter.report(deviceNo, state, commandSeq, bootId, eventSeq, traceId);
+        mqReporter.ifAvailable(mq -> mq.report(deviceNo, state, commandSeq, bootId, eventSeq, traceId));
     }
 }

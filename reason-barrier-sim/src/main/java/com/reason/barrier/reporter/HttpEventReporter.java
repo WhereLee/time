@@ -2,9 +2,11 @@ package com.reason.barrier.reporter;
 
 import com.reason.barrier.config.DeviceSignature;
 import com.reason.barrier.config.SimProperties;
+import com.reason.barrier.config.TraceIds;
 import com.reason.barrier.model.BarrierState;
 import com.reason.barrier.network.NetworkCondition;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
@@ -68,12 +70,24 @@ public class HttpEventReporter implements EventReporter {
     }
 
     @Override
-    public void report(String deviceNo, BarrierState state, Long commandSeq, String bootId, long eventSeq) {
-        //异步发送：动作线程不阻塞在网络上（机械时间与通信时间解耦）
-        sender.submit(() -> sendWithRetry(deviceNo, state, commandSeq, bootId, eventSeq));
+    public void report(String deviceNo, BarrierState state, Long commandSeq, String bootId, long eventSeq, String traceId) {
+        //异步发送：动作线程不阻塞在网络上（机械时间与通信时间解耦）；traceId 随任务显式传递
+        sender.submit(() -> sendWithRetry(deviceNo, state, commandSeq, bootId, eventSeq, traceId));
     }
 
-    private void sendWithRetry(String deviceNo, BarrierState state, Long commandSeq, String bootId, long eventSeq) {
+    private void sendWithRetry(String deviceNo, BarrierState state, Long commandSeq, String bootId,
+                              long eventSeq, String traceId) {
+        //发送线程独立于动作线程：MDC 不自动传递，显式置入使上报日志可被 traceId 串联
+        MDC.put(TraceIds.MDC_KEY, traceId);
+        try {
+            doSendWithRetry(deviceNo, state, commandSeq, bootId, eventSeq, traceId);
+        } finally {
+            MDC.remove(TraceIds.MDC_KEY);
+        }
+    }
+
+    private void doSendWithRetry(String deviceNo, BarrierState state, Long commandSeq, String bootId,
+                                long eventSeq, String traceId) {
         //网络剧本：上行方向断/单次丢包——模拟事件丢失（重试剧本：丢一次后恢复，重试应成功）
         if (network.shouldDropEvent()) {
             log.warn("[网络剧本] 事件上报被丢弃 deviceNo={} state={} seq={} eventSeq={}",
@@ -85,6 +99,8 @@ public class HttpEventReporter implements EventReporter {
         headers.setContentType(MediaType.APPLICATION_JSON);
         //0.5 per-device HMAC：不再携共享口令——平台按 X-Device-No 查密钥验签
         headers.set("X-Device-No", deviceNo);
+        //批次1 TraceId 贯穿：平台 TraceIdFilter 吃入站 X-Trace-Id 置 MDC——上报日志与平台处理日志同号
+        headers.set(TraceIds.HEADER, traceId);
         String secret = properties.secretOf(deviceNo);
         if (secret == null || secret.isEmpty()) {
             log.error("[上报取消] 设备未配置密钥 deviceNo={}（联调需环境变量注入）", deviceNo);

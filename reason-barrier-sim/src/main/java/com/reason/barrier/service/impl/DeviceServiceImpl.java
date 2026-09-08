@@ -1,11 +1,13 @@
 package com.reason.barrier.service.impl;
 
+import com.reason.barrier.config.TraceIds;
 import com.reason.barrier.model.Barrier;
 import com.reason.barrier.model.BarrierAction;
 import com.reason.barrier.model.BarrierState;
 import com.reason.barrier.registry.BarrierRegistry;
 import com.reason.barrier.service.DeviceService;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -30,13 +32,13 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     @Override
-    public String open(String deviceNo, long seq) {
-        return execute(deviceNo, BarrierAction.OPEN, seq);
+    public String open(String deviceNo, long seq, String traceId) {
+        return execute(deviceNo, BarrierAction.OPEN, seq, traceId);
     }
 
     @Override
-    public String close(String deviceNo, long seq) {
-        return execute(deviceNo, BarrierAction.CLOSE, seq);
+    public String close(String deviceNo, long seq, String traceId) {
+        return execute(deviceNo, BarrierAction.CLOSE, seq, traceId);
     }
 
     @Override
@@ -49,7 +51,8 @@ public class DeviceServiceImpl implements DeviceService {
     @Override
     public String recover(String deviceNo) {
         Barrier barrier = requireBarrier(deviceNo);
-        barrier.recover();
+        //设备自发事件（检修动作）：链路起点在设备侧——调用线程（注入口）已有 traceId 则沿用，无则生成
+        barrier.recover(TraceIds.orGenerate(MDC.get(TraceIds.MDC_KEY)));
         return "人工复位完成（故障清除，杆已回落则上报 DOWN）";
     }
 
@@ -62,7 +65,8 @@ public class DeviceServiceImpl implements DeviceService {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("非法状态: " + state + "（外力改态只支持 UP/DOWN）");
         }
-        barrier.tamper(forced);
+        //设备自发事件（物理世界外力）：调用线程已有 traceId 则沿用（注入口请求与事件上报同号），无则生成
+        barrier.tamper(forced, TraceIds.orGenerate(MDC.get(TraceIds.MDC_KEY)));
         return "外力改态完成 -> " + forced + "（设备已主动上报）";
     }
 
@@ -103,10 +107,10 @@ public class DeviceServiceImpl implements DeviceService {
         return snapshot;
     }
 
-    private String execute(String deviceNo, BarrierAction action, long seq) {
+    private String execute(String deviceNo, BarrierAction action, long seq, String traceId) {
         Barrier barrier = requireBarrier(deviceNo);
         //IllegalStateException（动作不合法/互锁/故障态）不捕获——传播给 controller 翻译为拒绝回执
-        boolean accepted = barrier.execute(action, seq);
+        boolean accepted = barrier.execute(action, seq, traceId);
         if (accepted) {
             log.info("[指令受理] deviceNo={} action={} seq={}", deviceNo, action, seq);
             return "指令已受理";

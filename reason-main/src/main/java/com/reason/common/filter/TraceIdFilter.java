@@ -43,8 +43,9 @@ public class TraceIdFilter extends OncePerRequestFilter {
         }
     }
 
-    /** 16 字节 SecureRandom → 32 位 hex（与 TokenGenerator 同源策略） */
-    static String generateTraceId() {
+    /** 16 字节 SecureRandom → 32 位 hex（与 TokenGenerator 同源策略）。
+     *  public：批次1 链路贯穿——Quartz 任务轮次/设备下发等非 HTTP 入口也需生成链路号 */
+    public static String generateTraceId() {
         byte[] bytes = new byte[16];
         RANDOM.nextBytes(bytes);
         return HEX.formatHex(bytes);

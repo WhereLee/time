@@ -3,9 +3,11 @@ package com.reason.barrier.reporter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.reason.barrier.config.DeviceSignature;
 import com.reason.barrier.config.SimProperties;
+import com.reason.barrier.config.TraceIds;
 import com.reason.barrier.model.BarrierState;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.apache.rocketmq.client.apis.ClientConfiguration;
 import org.apache.rocketmq.client.apis.ClientServiceProvider;
 import org.apache.rocketmq.client.apis.message.Message;
@@ -96,13 +98,13 @@ public class MqEventReporter implements EventReporter {
     }
 
     @Override
-    public void report(String deviceNo, BarrierState state, Long commandSeq, String bootId, long eventSeq) {
+    public void report(String deviceNo, BarrierState state, Long commandSeq, String bootId, long eventSeq, String traceId) {
         if (!running) {
             log.warn("[MQ上报丢弃] 关闭中 deviceNo={} state={} seq={} eventSeq={}（双写期 HTTP 通道并行在投）",
                     deviceNo, state, commandSeq, eventSeq);
             return;
         }
-        PendingEvent event = new PendingEvent(deviceNo, state, commandSeq, bootId, eventSeq);
+        PendingEvent event = new PendingEvent(deviceNo, state, commandSeq, bootId, eventSeq, traceId);
         synchronized (queue) {
             while (!queue.offer(event)) {
                 //队列满：丢弃最旧未发事件为新事件腾位（记 error——平台 QUERY_STATE/心跳对账兜底）
@@ -118,7 +120,8 @@ public class MqEventReporter implements EventReporter {
     }
 
     /**
-     * 发送主循环（唯一发送线程）：严格按队列顺序逐条发送——保序不在此层做任何"优化"
+     * 发送主循环（唯一发送线程）：严格按队列顺序逐条发送——保序不在此层做任何"优化"；
+     * 每条发送前置 MDC（发送线程独立于动作线程，traceId 随队列元素显式传递）
      */
     private void drainLoop() {
         while (running) {
@@ -129,7 +132,12 @@ public class MqEventReporter implements EventReporter {
                 Thread.currentThread().interrupt();
                 break;
             }
-            sendWithRetry(event);
+            MDC.put(TraceIds.MDC_KEY, event.traceId());
+            try {
+                sendWithRetry(event);
+            } finally {
+                MDC.remove(TraceIds.MDC_KEY);
+            }
         }
     }
 
@@ -193,6 +201,8 @@ public class MqEventReporter implements EventReporter {
                     .addProperty("X-Device-Sign", DeviceSignature.sign(secret,
                             DeviceSignature.canonicalEvent(event.deviceNo(), event.state().getCode(),
                                     event.commandSeq(), event.bootId(), event.eventSeq())))
+                    //批次1 TraceId 贯穿：MQ 以 property 承载（契约 §7.1），平台消费侧取出置 MDC
+                    .addProperty(TraceIds.MQ_PROPERTY, event.traceId())
                     //keys 留排查锚点：broker 侧可按 设备-事件序 检索消息
                     .setKeys(event.deviceNo() + "-" + event.eventSeq())
                     .build();
@@ -283,8 +293,9 @@ public class MqEventReporter implements EventReporter {
     }
 
     /**
-     * 排队中的待发送事件（保序队列元素）
+     * 排队中的待发送事件（保序队列元素；traceId 随元素传递——跨线程不依赖 MDC）
      */
-    private record PendingEvent(String deviceNo, BarrierState state, Long commandSeq, String bootId, long eventSeq) {
+    private record PendingEvent(String deviceNo, BarrierState state, Long commandSeq, String bootId,
+                                long eventSeq, String traceId) {
     }
 }

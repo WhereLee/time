@@ -48,8 +48,8 @@
                 <maxFileSize>10MB</maxFileSize>
             </timeBasedFileNamingAndTriggeringPolicy>
 
-            <!--日志文件保留天数-->
-            <!--<maxHistory>15</maxHistory>-->
+            <!--日志文件保留天数（批次1 修复：原注释掉=归档无限期堆积吃满磁盘）-->
+            <maxHistory>30</maxHistory>
         </rollingPolicy>
         <!-- 此日志文件只记录info级别的 -->
         <filter class="ch.qos.logback.classic.filter.LevelFilter">
@@ -77,14 +77,13 @@
                 <maxFileSize>10MB</maxFileSize>
             </timeBasedFileNamingAndTriggeringPolicy>
 
-            <!--日志文件保留天数-->
-            <!--<maxHistory>15</maxHistory>-->
+            <!--日志文件保留天数（批次1 修复）-->
+            <maxHistory>30</maxHistory>
         </rollingPolicy>
-        <!-- 此日志文件只记录info级别的 -->
-        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+        <!-- 批次1 修复：WARN 桶改用 ThresholdFilter 吸收 WARN 及以上（含 ERROR）——
+             原 LevelFilter 精确匹配使 warn.log 看不到 ERROR，排障时丢上下文 -->
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
             <level>WARN</level>
-            <onMatch>ACCEPT</onMatch>
-            <onMismatch>DENY</onMismatch>
         </filter>
     </appender>
 
@@ -106,10 +105,10 @@
                 <maxFileSize>10MB</maxFileSize>
             </timeBasedFileNamingAndTriggeringPolicy>
 
-            <!--日志文件保留天数-->
-            <!--<maxHistory>15</maxHistory>-->
+            <!--日志文件保留天数（批次1 修复）-->
+            <maxHistory>30</maxHistory>
         </rollingPolicy>
-        <!-- 此日志文件只记录info级别的 -->
+        <!-- ERROR 桶纯 ERROR：便于告警渠道抓取（WARN+ERROR 全上下文看 warn.log） -->
         <filter class="ch.qos.logback.classic.filter.LevelFilter">
             <level>ERROR</level>
             <onMatch>ACCEPT</onMatch>

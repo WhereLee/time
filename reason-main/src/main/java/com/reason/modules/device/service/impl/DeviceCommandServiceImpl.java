@@ -2,6 +2,7 @@ package com.reason.modules.device.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.reason.common.exception.RRException;
+import com.reason.common.filter.TraceIdFilter;
 import com.reason.modules.device.config.DeviceChannelProperties;
 import com.reason.modules.device.config.DeviceSignature;
 import com.reason.modules.device.dao.DeviceRecordDao;
@@ -11,6 +12,7 @@ import com.reason.modules.device.enums.TriggerType;
 import com.reason.modules.device.service.DeviceCommandLogService;
 import com.reason.modules.device.service.DeviceCommandService;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
@@ -157,6 +159,9 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
             org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
             headers.set(NO_DEVICE_HEADER, deviceNo);
             headers.set(SIGN_HEADER, DeviceSignature.sign(secret, DeviceSignature.canonicalCommand(deviceNo, action, seq)));
+            //批次1 TraceId 贯穿：管理端请求沿用 TraceIdFilter 置的 MDC；Quartz 任务轮次用任务入口生成的链路号——
+            //sim 执行与事件上报沿用同号，一次抬杆从点击/任务到销账可 grep 串联
+            headers.set(TraceIdFilter.TRACE_ID_HEADER, currentTraceId());
             Map<?, ?> resp = restTemplate.postForObject(url,
                     new org.springframework.http.HttpEntity<>(payload, headers), Map.class);
             Object code = resp == null ? null : resp.get("code");
@@ -187,6 +192,16 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         return record.getDeviceSecret();
     }
 
+    /**
+     * 当前链路号（批次1）：HTTP 请求线程沿用 TraceIdFilter 置的 MDC；
+     * Quartz 任务轮次由任务入口生成并置 MDC（见 BarrierAutoTask/BarrierMonitorTask）；
+     * 两者都无时临时生成（不让下行请求缺链路头）
+     */
+    private String currentTraceId() {
+        String traceId = MDC.get(TraceIdFilter.MDC_KEY);
+        return (traceId == null || traceId.isEmpty()) ? TraceIdFilter.generateTraceId() : traceId;
+    }
+
     @Override
     public QueryResult queryState(String deviceNo) {
         //QUERY_STATE（协议 v2 §2.2）：主动问设备实况——用于监控对账与上行故障诊断（T20）；
@@ -204,6 +219,8 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
             org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
             headers.set(NO_DEVICE_HEADER, deviceNo);
             headers.set(SIGN_HEADER, DeviceSignature.sign(secret, DeviceSignature.canonicalCommand(deviceNo, "QUERY", 0)));
+            //批次1：查询也贯穿 traceId（超时对账发起的查询可与那条流水链路对上）
+            headers.set(TraceIdFilter.TRACE_ID_HEADER, currentTraceId());
             Map<?, ?> resp = restTemplate.postForObject(url,
                     new org.springframework.http.HttpEntity<>(payload, headers), Map.class);
             if (resp == null || !Integer.valueOf(0).equals(resp.get("code"))) {

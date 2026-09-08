@@ -9,6 +9,7 @@ import com.reason.modules.device.form.DeviceHeartbeatForm;
 import com.reason.modules.device.service.DeviceMonitorService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,7 +27,11 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p>state 语义（0.7）：允许 null（只报活不报态——老设备/降级模式），null 时跳过对账仅刷 TTL；
  * 非法码 400 语义化（疑似伪造/协议错）且不影响后续正常心跳。</p>
+ *
+ * <p>结构化日志（批次1）：心跳高频（10s/台），正常路径 debug 级防刷屏（dev 下 com.reason=DEBUG 可见）；
+ * 拒绝路径 warn 级（伪造/配置错位必须立即可见）。</p>
  */
+@Slf4j
 @Tag(name = "设备心跳")
 @RestController
 @RequestMapping("device/heartbeat")
@@ -53,6 +58,8 @@ public class DeviceHeartbeatController {
     public Result<String> heartbeat(@RequestHeader(value = DEVICE_HEADER, required = false) String deviceNoHeader,
                                     @RequestHeader(value = SIGN_HEADER, required = false) String signature,
                                     @RequestBody DeviceHeartbeatForm form) {
+        //批次1：心跳高频，正常路径 debug（排障时开 DEBUG 可看报文级到达记录，平时不刷屏）
+        log.debug("[心跳入口] deviceNo={} state={}", form.getDeviceNo(), form.getState());
         //0.5 设备通道鉴权：per-device HMAC（与事件通道同一凭证体系）
         authenticator.authenticateHeartbeat(form.getDeviceNo(), form.getState(), signature);
 
@@ -62,6 +69,7 @@ public class DeviceHeartbeatController {
             try {
                 stateCode = DeviceState.fromCode(form.getState()).getCode();
             } catch (IllegalArgumentException e) {
+                log.warn("[心跳入口-拒绝] 非法状态码 deviceNo={} state={}", form.getDeviceNo(), form.getState());
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "非法状态码: " + form.getState() + "（协议 v2：1-升起 2-降下 3-动作中 4-故障）");
             }
@@ -70,6 +78,7 @@ public class DeviceHeartbeatController {
             deviceMonitorService.heartbeat(form.getDeviceNo(), stateCode);
         } catch (RRException e) {
             //未登记设备心跳 = 配置错位（调用方问题）-> 400
+            log.warn("[心跳入口-拒绝] 业务拒绝 deviceNo={} cause={}", form.getDeviceNo(), e.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
         return Result.ok();

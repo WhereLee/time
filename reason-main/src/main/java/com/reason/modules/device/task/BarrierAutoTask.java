@@ -1,6 +1,7 @@
 package com.reason.modules.device.task;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.reason.common.filter.TraceIdFilter;
 import com.reason.modules.device.config.BarrierProperties;
 import com.reason.modules.device.dao.DeviceRecordDao;
 import com.reason.modules.device.entity.DeviceCommandLogEntity;
@@ -16,6 +17,7 @@ import com.reason.modules.device.service.DeviceMonitorService;
 import com.reason.modules.device.service.ManualHoldService;
 import com.reason.modules.job.task.ITask;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalTime;
@@ -66,6 +68,17 @@ public class BarrierAutoTask implements ITask {
 
     @Override
     public void run(String params) {
+        //批次1 链路号：Quartz 任务线程无 HTTP 上下文，本轮生成 traceId——本轮全部日志与
+        //下发指令共用（sim 执行/事件上报沿用同号，自动升降链路可 grep 串联）
+        MDC.put(TraceIdFilter.MDC_KEY, TraceIdFilter.generateTraceId());
+        try {
+            doRun(params);
+        } finally {
+            MDC.remove(TraceIdFilter.MDC_KEY);
+        }
+    }
+
+    private void doRun(String params) {
         if (!properties.isAutoEnabled()) {
             log.debug("自动升降已关闭(reason.barrier.auto-enabled=false)，本轮跳过");
             return;

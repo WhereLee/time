@@ -9,6 +9,7 @@ import com.reason.modules.device.form.DeviceEventForm;
 import com.reason.modules.device.service.DeviceEventService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,7 +28,11 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p>错误语义（0.7）：鉴权失败 401、协议错误（非法状态码/未登记设备）400——设备通道的错误
  * 本质是"请求本身有问题"，不再 200+code500 让设备侧自省窗口失明。</p>
+ *
+ * <p>结构化日志（批次1）：入口报文级留痕（字段化 deviceNo/state/commandSeq/bootId/eventSeq）——
+ * traceId 由 TraceIdFilter 置 MDC，pattern 自动输出；事件通道中断类事故凭此定位"哪几次上报到达"。</p>
  */
+@Slf4j
 @Tag(name = "设备事件")
 @RestController
 @RequestMapping("device/event")
@@ -54,6 +59,9 @@ public class DeviceEventController {
     public Result<String> report(@RequestHeader(value = DEVICE_HEADER, required = false) String deviceNoHeader,
                                  @RequestHeader(value = SIGN_HEADER, required = false) String signature,
                                  @RequestBody DeviceEventForm form) {
+        //批次1 报文级留痕：事件稀疏且每条有业务意义，info 级字段化（grep deviceNo 可拉出该设备全部上报）
+        log.info("[事件入口] deviceNo={} state={} commandSeq={} bootId={} eventSeq={}",
+                form.getDeviceNo(), form.getState(), form.getCommandSeq(), form.getBootId(), form.getEventSeq());
         //0.5 设备通道鉴权：per-device HMAC（共享口令已退役）——伪造/重放由密钥+序守卫双层拦截
         authenticator.authenticateEvent(form.getDeviceNo(), form.getState(), form.getCommandSeq(),
                 form.getBootId(), form.getEventSeq(), signature);
@@ -61,6 +69,8 @@ public class DeviceEventController {
         try {
             DeviceState.fromCode(form.getState());
         } catch (IllegalArgumentException e) {
+            log.warn("[事件入口-拒绝] 非法状态码 deviceNo={} state={} eventSeq={}",
+                    form.getDeviceNo(), form.getState(), form.getEventSeq());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "非法状态码: " + form.getState() + "（协议 v2：1-升起 2-降下 3-动作中 4-故障）");
         }
@@ -69,6 +79,8 @@ public class DeviceEventController {
             deviceEventService.handleStateEvent(form);
         } catch (RRException e) {
             //未登记设备上报 = 配置错位（调用方问题）-> 400
+            log.warn("[事件入口-拒绝] 业务拒绝 deviceNo={} eventSeq={} cause={}",
+                    form.getDeviceNo(), form.getEventSeq(), e.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
         return Result.ok();

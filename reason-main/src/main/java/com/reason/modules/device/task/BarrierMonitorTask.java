@@ -1,6 +1,7 @@
 package com.reason.modules.device.task;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.reason.common.filter.TraceIdFilter;
 import com.reason.modules.device.config.BarrierProperties;
 import com.reason.modules.device.dao.DeviceRecordDao;
 import com.reason.modules.device.entity.DeviceCommandLogEntity;
@@ -15,6 +16,7 @@ import com.reason.modules.device.service.DeviceMonitorService;
 import com.reason.modules.device.service.ManualHoldService;
 import com.reason.modules.job.task.ITask;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -64,6 +66,17 @@ public class BarrierMonitorTask implements ITask {
 
     @Override
     public void run(String params) {
+        //批次1 链路号：本轮巡检（超时对账/MOVING 巡检/离线扫描）共用一个 traceId——
+        //对账发起的 QUERY_STATE 与重试下发沿用同号，设备侧日志可对照
+        MDC.put(TraceIdFilter.MDC_KEY, TraceIdFilter.generateTraceId());
+        try {
+            doRun(params);
+        } finally {
+            MDC.remove(TraceIdFilter.MDC_KEY);
+        }
+    }
+
+    private void doRun(String params) {
         //1. 指令超时对账：待到位且超过阈值的流水
         List<DeviceCommandLogEntity> timeouts =
                 commandLogService.findTimeoutPending(properties.getCommandTimeoutSeconds());

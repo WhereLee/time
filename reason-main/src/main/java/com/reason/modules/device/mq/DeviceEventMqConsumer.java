@@ -2,6 +2,7 @@ package com.reason.modules.device.mq;
 
 import com.alibaba.fastjson2.JSON;
 import com.reason.common.exception.RRException;
+import com.reason.common.filter.TraceIdFilter;
 import com.reason.modules.device.config.DeviceChannelProperties;
 import com.reason.modules.device.config.DeviceChannelAuthenticator;
 import com.reason.modules.device.enums.DeviceState;
@@ -16,6 +17,7 @@ import org.apache.rocketmq.client.apis.ClientServiceProvider;
 import org.apache.rocketmq.client.apis.consumer.FilterExpression;
 import org.apache.rocketmq.client.apis.consumer.SimpleConsumer;
 import org.apache.rocketmq.client.apis.message.MessageView;
+import org.slf4j.MDC;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
@@ -67,6 +69,9 @@ public class DeviceEventMqConsumer {
 
     /** consumer 重建节拍（broker 未就绪不炸平台，记 error 后持续重试） */
     private static final long REBUILD_INTERVAL_MILLIS = 5000;
+
+    /** traceId 的 message property key（契约 §7.1；与 sim TraceIds.MQ_PROPERTY 同值） */
+    private static final String TRACE_PROPERTY = "traceId";
 
     private final DeviceChannelProperties properties;
     private final DeviceChannelAuthenticator authenticator;
@@ -145,27 +150,37 @@ public class DeviceEventMqConsumer {
     }
 
     /**
-     * 处理单条消息：process 出分级结论 → ACK 路径签收；RETRY 路径不签收等 broker 重投
+     * 处理单条消息：process 出分级结论 → ACK 路径签收；RETRY 路径不签收等 broker 重投。
+     * 批次1 TraceId：从 message property 取出置 MDC（消费线程无 HTTP 请求上下文，
+     * 不置则消费日志无链路号——无法与 sim 侧上报日志对照定位）
      */
     private void handleOne(SimpleConsumer c, MessageView message) {
-        Outcome outcome;
+        String traceId = message.getProperties().get(TRACE_PROPERTY);
+        if (traceId != null && !traceId.isEmpty()) {
+            MDC.put(TraceIdFilter.MDC_KEY, traceId);
+        }
         try {
-            outcome = process(message);
-        } catch (Exception e) {
-            //最外层兜底：意外异常按瞬时故障处理（重投→耗尽进死信），不得打爆消费线程
-            log.error("[MQ事件消费] 处理意外异常，按瞬时故障等 broker 重投 msgId={}", message.getMessageId(), e);
-            outcome = Outcome.RETRY;
-        }
-        if (outcome == Outcome.ACK) {
+            Outcome outcome;
             try {
-                c.ack(message);
+                outcome = process(message);
             } catch (Exception e) {
-                //ack 失败 = broker 将重投——业务幂等吸收（台账序守卫+按 seq 销账），只留痕不补偿
-                log.error("[MQ事件消费] ack 失败，消息将被 broker 重投（业务幂等吸收）msgId={} cause={}",
-                        message.getMessageId(), e.getMessage());
+                //最外层兜底：意外异常按瞬时故障处理（重投→耗尽进死信），不得打爆消费线程
+                log.error("[MQ事件消费] 处理意外异常，按瞬时故障等 broker 重投 msgId={}", message.getMessageId(), e);
+                outcome = Outcome.RETRY;
             }
+            if (outcome == Outcome.ACK) {
+                try {
+                    c.ack(message);
+                } catch (Exception e) {
+                    //ack 失败 = broker 将重投——业务幂等吸收（台账序守卫+按 seq 销账），只留痕不补偿
+                    log.error("[MQ事件消费] ack 失败，消息将被 broker 重投（业务幂等吸收）msgId={} cause={}",
+                            message.getMessageId(), e.getMessage());
+                }
+            }
+            //RETRY：不 ack，INVISIBLE_DURATION 到期 broker 重投；重投耗尽（retryMaxTimes=3）进死信
+        } finally {
+            MDC.remove(TraceIdFilter.MDC_KEY);
         }
-        //RETRY：不 ack，INVISIBLE_DURATION 到期 broker 重投；重投耗尽（retryMaxTimes=3）进死信
     }
 
     /**

@@ -1,7 +1,9 @@
 package com.reason.barrier.model;
 
+import com.reason.barrier.config.TraceIds;
 import com.reason.barrier.reporter.EventReporter;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -123,11 +125,12 @@ public class Barrier {
     /**
      * 指令入口（带 seq 幂等）：裁决合法性并启动动作（异步执行，立即返回）
      *
-     * @param seq 平台指令序号（设备内单调递增；重发同 seq = 幂等忽略）
+     * @param seq     平台指令序号（设备内单调递增；重发同 seq = 幂等忽略）
+     * @param traceId 链路跟踪号（平台下发携带，沿用到动作线程与事件上报——批次1 D-E）
      * @return true=受理执行；false=重复/乱序指令已幂等忽略（对平台而言也是"成功受理"）
      * @throws IllegalStateException 动作在当前状态不合法（由 service 翻译后回执平台）
      */
-    public synchronized boolean execute(BarrierAction action, long seq) {
+    public synchronized boolean execute(BarrierAction action, long seq, String traceId) {
         //0.6 双线 seq：曾被拒绝的指令重试 -> 明确拒绝（状态不允许，重试无意义）——
         //平台据此终止流水（SEND_FAILED），不再被幂等线吞成"已执行"假成功
         if (seq == lastRejectedSeq) {
@@ -171,7 +174,7 @@ public class Barrier {
         //置"动作中"（物理：杆已经开始动），再异步推进到位
         state = BarrierState.MOVING;
         log.info("[{}] 开始执行 {} -> {}（seq={} 耗时 {}ms）", deviceNo, action, target, seq, moveMillis);
-        actionExecutor.submit(() -> runAction(target, seq));
+        actionExecutor.submit(() -> runAction(target, seq, traceId));
         return true;
     }
 
@@ -185,40 +188,46 @@ public class Barrier {
 
     /**
      * 动作推进（异步线程）：上报动作中 -> 耗时等待（模拟机械运动）-> 到位/卡杆 -> 上报结果。
-     * 事件携带引起动作的 commandSeq（协议 v2：平台凭它按 seq 精确销账）
+     * 事件携带引起动作的 commandSeq（协议 v2：平台凭它按 seq 精确销账）。
+     * traceId 显式传入并置 MDC（跨线程边界：HTTP 线程的 MDC 不会自动传到动作线程）
      */
-    private void runAction(BarrierState target, long commandSeq) {
-        reportEvent(BarrierState.MOVING, commandSeq);
+    private void runAction(BarrierState target, long commandSeq, String traceId) {
+        MDC.put(TraceIds.MDC_KEY, traceId);
         try {
-            Thread.sleep(moveMillis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.warn("[{}] 动作被中断", deviceNo);
-            return;
-        }
-        boolean faulted;
-        synchronized (this) {
-            //动作期间状态被外力改走（tamper/recover）：动作结果作废，尊重物理世界发生的事
-            if (state != BarrierState.MOVING) {
-                log.warn("[{}] 动作期间状态被外力改变(当前={})，本次动作结果作废", deviceNo, state);
+            reportEvent(BarrierState.MOVING, commandSeq, traceId);
+            try {
+                Thread.sleep(moveMillis);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("[{}] 动作被中断", deviceNo);
                 return;
             }
-            //0.4 卡动作中注入：MOVING 后永不终态不上报（机械卡滞但未报故障）——
-            //台账将卡 MOVING，由平台巡检(MOVING_STUCK 告警)显式化，不在此替平台圆谎
-            if (stuckMovingInjected) {
-                log.error("[{}] 卡动作中注入：杆停在 MOVING 不终态不上报（机械卡滞，等巡检告警交人工）", deviceNo);
-                return;
+            boolean faulted;
+            synchronized (this) {
+                //动作期间状态被外力改走（tamper/recover）：动作结果作废，尊重物理世界发生的事
+                if (state != BarrierState.MOVING) {
+                    log.warn("[{}] 动作期间状态被外力改变(当前={})，本次动作结果作废", deviceNo, state);
+                    return;
+                }
+                //0.4 卡动作中注入：MOVING 后永不终态不上报（机械卡滞但未报故障）——
+                //台账将卡 MOVING，由平台巡检(MOVING_STUCK 告警)显式化，不在此替平台圆谎
+                if (stuckMovingInjected) {
+                    log.error("[{}] 卡动作中注入：杆停在 MOVING 不终态不上报（机械卡滞，等巡检告警交人工）", deviceNo);
+                    return;
+                }
+                faulted = faultInjected;
+                state = faulted ? BarrierState.FAULT : target;
             }
-            faulted = faultInjected;
-            state = faulted ? BarrierState.FAULT : target;
-        }
-        //上报在锁外（HTTP IO 不进临界区）
-        if (faulted) {
-            log.warn("[{}] 动作卡死（故障注入）-> FAULT，等待人工复位", deviceNo);
-            reportEvent(BarrierState.FAULT, commandSeq);
-        } else {
-            reportEvent(target, commandSeq);
-            log.info("[{}] 动作完成，当前状态={}", deviceNo, target);
+            //上报在锁外（HTTP IO 不进临界区）
+            if (faulted) {
+                log.warn("[{}] 动作卡死（故障注入）-> FAULT，等待人工复位", deviceNo);
+                reportEvent(BarrierState.FAULT, commandSeq, traceId);
+            } else {
+                reportEvent(target, commandSeq, traceId);
+                log.info("[{}] 动作完成，当前状态={}", deviceNo, target);
+            }
+        } finally {
+            MDC.remove(TraceIds.MDC_KEY);
         }
     }
 
@@ -258,8 +267,10 @@ public class Barrier {
 
     /**
      * 人工复位：清除全部注入（故障/静默/卡动作中）；若杆停在 FAULT，复位后回落 DOWN 并上报（检修完成语义）
+     *
+     * @param traceId 链路跟踪号（设备自发事件，由调用方生成）
      */
-    public void recover() {
+    public void recover(String traceId) {
         boolean needReport;
         synchronized (this) {
             faultInjected = false;
@@ -273,7 +284,7 @@ public class Barrier {
         if (needReport) {
             log.info("[{}] 人工复位：故障清除，杆回落 DOWN", deviceNo);
             //复位是非指令驱动状态变化：commandSeq=null（协议 v2——平台只更新台账，不销任何流水）
-            reportEvent(BarrierState.DOWN, null);
+            reportEvent(BarrierState.DOWN, null, traceId);
         } else {
             log.info("[{}] 故障注入标志已清除（杆未处于故障态）", deviceNo);
         }
@@ -282,8 +293,10 @@ public class Barrier {
     /**
      * 外力改态：物理世界把杆掰到某稳定态（不经任何指令）——设备感知后主动上报，
      * 平台心跳/事件对账随之校正（"外力改态被周期对账吸收"边界的设备侧配合）
+     *
+     * @param traceId 链路跟踪号（设备自发事件，由调用方生成）
      */
-    public void tamper(BarrierState forced) {
+    public void tamper(BarrierState forced, String traceId) {
         if (forced != BarrierState.UP && forced != BarrierState.DOWN) {
             throw new IllegalArgumentException("外力改态只支持稳定态 UP/DOWN");
         }
@@ -292,7 +305,7 @@ public class Barrier {
         }
         log.warn("[{}] 外力改态 -> {}（非指令驱动，设备自述上报）", deviceNo, forced);
         //外力改态是非指令驱动状态变化：commandSeq=null（协议 v2——平台只更新台账，不销任何流水）
-        reportEvent(forced, null);
+        reportEvent(forced, null, traceId);
     }
 
     /**
@@ -304,10 +317,10 @@ public class Barrier {
     }
 
     /**
-     * 上报一次状态变化（协议 v2 事件载荷：设备内单调 eventSeq + 本进程 bootId）
+     * 上报一次状态变化（协议 v2 事件载荷：设备内单调 eventSeq + 本进程 bootId + 链路 traceId）
      */
-    private void reportEvent(BarrierState reported, Long commandSeq) {
+    private void reportEvent(BarrierState reported, Long commandSeq, String traceId) {
         long eventSeq = eventCounter.incrementAndGet();
-        reporter.report(deviceNo, reported, commandSeq, bootId, eventSeq);
+        reporter.report(deviceNo, reported, commandSeq, bootId, eventSeq, traceId);
     }
 }

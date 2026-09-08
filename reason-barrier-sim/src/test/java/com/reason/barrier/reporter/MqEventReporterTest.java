@@ -38,6 +38,8 @@ class MqEventReporterTest {
     private static final String DEVICE_NO = "BARRIER-E-01";
     private static final String SECRET = "test-secret-e01";
     private static final String BOOT_ID = "boot-test-1";
+    /** 链路号测试常量（批次1：traceId 进 message property，平台消费侧取出置 MDC） */
+    private static final String TRACE = "trace-test-0001";
 
     private Producer producer;
     private MqEventReporter reporter;
@@ -71,7 +73,7 @@ class MqEventReporterTest {
     @DisplayName("信封构造：报文体=协议v2事件JSON（同构HTTP body），签名进 message property（canonical 不变）")
     void 信封构造_签名进property() {
         reporter = newReporter(500);
-        reporter.report(DEVICE_NO, BarrierState.UP, 7L, BOOT_ID, 42L);
+        reporter.report(DEVICE_NO, BarrierState.UP, 7L, BOOT_ID, 42L, TRACE);
 
         ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
         Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
@@ -91,13 +93,15 @@ class MqEventReporterTest {
         String expectedSign = DeviceSignature.sign(SECRET,
                 DeviceSignature.canonicalEvent(DEVICE_NO, 1, 7L, BOOT_ID, 42L));
         assertThat(message.getProperties().get("X-Device-Sign")).isEqualTo(expectedSign);
+        //批次1 TraceId 贯穿：traceId 进 message property（契约 §7.1，平台消费侧取出置 MDC）
+        assertThat(message.getProperties().get("traceId")).isEqualTo(TRACE);
     }
 
     @Test
     @DisplayName("commandSeq 为空（外力改态）：报文体携带 null 字段，签名 canonical 空串位")
     void 信封构造_commandSeq可空() {
         reporter = newReporter(500);
-        reporter.report(DEVICE_NO, BarrierState.DOWN, null, BOOT_ID, 43L);
+        reporter.report(DEVICE_NO, BarrierState.DOWN, null, BOOT_ID, 43L, TRACE);
 
         ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
         Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
@@ -121,8 +125,8 @@ class MqEventReporterTest {
                 .thenThrow(new RuntimeException("broker unreachable"))
                 .thenReturn(null);
 
-        reporter.report(DEVICE_NO, BarrierState.MOVING, 7L, BOOT_ID, 1L);
-        reporter.report(DEVICE_NO, BarrierState.UP, 7L, BOOT_ID, 2L);
+        reporter.report(DEVICE_NO, BarrierState.MOVING, 7L, BOOT_ID, 1L, TRACE);
+        reporter.report(DEVICE_NO, BarrierState.UP, 7L, BOOT_ID, 2L, TRACE);
 
         //e1 重试 3 次（退避 1s+2s）后成功，e2 随后——全程保序
         ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
@@ -151,12 +155,12 @@ class MqEventReporterTest {
             return null;
         });
 
-        reporter.report(DEVICE_NO, BarrierState.MOVING, 1L, BOOT_ID, 1L);
+        reporter.report(DEVICE_NO, BarrierState.MOVING, 1L, BOOT_ID, 1L, TRACE);
         assertThat(sendEntered.await(10, TimeUnit.SECONDS)).isTrue();
         //e1 在途阻塞；e2/e3 占满队列（容量 2）；e4 挤掉最旧的 e2
-        reporter.report(DEVICE_NO, BarrierState.UP, 1L, BOOT_ID, 2L);
-        reporter.report(DEVICE_NO, BarrierState.MOVING, 2L, BOOT_ID, 3L);
-        reporter.report(DEVICE_NO, BarrierState.UP, 2L, BOOT_ID, 4L);
+        reporter.report(DEVICE_NO, BarrierState.UP, 1L, BOOT_ID, 2L, TRACE);
+        reporter.report(DEVICE_NO, BarrierState.MOVING, 2L, BOOT_ID, 3L, TRACE);
+        reporter.report(DEVICE_NO, BarrierState.UP, 2L, BOOT_ID, 4L, TRACE);
         sendRelease.countDown();
 
         CopyOnWriteArrayList<String> sentBodies = new CopyOnWriteArrayList<>();
@@ -177,7 +181,7 @@ class MqEventReporterTest {
     @DisplayName("设备未配置密钥：毒事件丢弃不重试（与 HTTP 通道同语义）")
     void 密钥缺失_丢弃不重试() throws Exception {
         reporter = newReporter(500);
-        reporter.report("BARRIER-UNKNOWN", BarrierState.UP, 1L, BOOT_ID, 1L);
+        reporter.report("BARRIER-UNKNOWN", BarrierState.UP, 1L, BOOT_ID, 1L, TRACE);
 
         //等待一个重试周期以上，确认从未发起发送
         TimeUnit.MILLISECONDS.sleep(1500);

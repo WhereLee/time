@@ -2,8 +2,10 @@ package com.reason.barrier.controller;
 
 import com.reason.barrier.config.DeviceSignature;
 import com.reason.barrier.config.SimProperties;
+import com.reason.barrier.config.TraceIds;
 import com.reason.barrier.network.NetworkCondition;
 import com.reason.barrier.service.DeviceService;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -45,7 +47,20 @@ public class CommandController {
 
     @PostMapping("/cmd")
     public Map<String, Object> cmd(@RequestHeader(value = SIGN_HEADER, required = false) String signature,
+                                   @RequestHeader(value = TraceIds.HEADER, required = false) String incomingTraceId,
                                    @RequestBody Map<String, Object> req) {
+        //批次1 TraceId 贯穿：平台下发携带则沿用（管理端点击→下发→执行→上报→销账 同一 traceId），
+        //无则生成（设备侧为链路起点）；MDC 使本请求线程日志自带 traceId，finally 清理防线程池串用
+        String traceId = TraceIds.orGenerate(incomingTraceId);
+        MDC.put(TraceIds.MDC_KEY, traceId);
+        try {
+            return doCmd(signature, req, traceId);
+        } finally {
+            MDC.remove(TraceIds.MDC_KEY);
+        }
+    }
+
+    private Map<String, Object> doCmd(String signature, Map<String, Object> req, String traceId) {
         //网络剧本：下行方向断——入站指令整体拒绝（平台 dispatch 收 5xx -> "设备无响应"）
         if (network.isBlockDownstream()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
@@ -76,9 +91,9 @@ public class CommandController {
         try {
             String msg;
             if ("OPEN".equals(action)) {
-                msg = deviceService.open(deviceNo, seq);
+                msg = deviceService.open(deviceNo, seq, traceId);
             } else if ("CLOSE".equals(action)) {
-                msg = deviceService.close(deviceNo, seq);
+                msg = deviceService.close(deviceNo, seq, traceId);
             } else {
                 return Map.of("code", 1, "msg", "未知动作: " + action);
             }
@@ -97,23 +112,31 @@ public class CommandController {
      */
     @PostMapping("/cmd/query")
     public Map<String, Object> query(@RequestHeader(value = SIGN_HEADER, required = false) String signature,
+                                     @RequestHeader(value = TraceIds.HEADER, required = false) String incomingTraceId,
                                      @RequestBody Map<String, Object> req) {
-        //网络剧本：下行方向断——查询同样不可达（平台 queryState 收 5xx -> null -> 重试路径）
-        if (network.isBlockDownstream()) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "设备不可达(网络剧本: 下行阻断)");
-        }
-        String deviceNo = req.get("deviceNo") == null ? null : String.valueOf(req.get("deviceNo"));
-        if (deviceNo == null || deviceNo.isBlank()) {
-            return Map.of("code", 1, "msg", "缺少设备编号 deviceNo");
-        }
-        //0.5：查询同样要求平台签名（下行通道同权鉴权）
-        authenticatePlatform(deviceNo, "QUERY", 0, signature);
+        //查询同样贯穿 traceId（平台超时对账发起的查询可与那条流水的链路对上）
+        String traceId = TraceIds.orGenerate(incomingTraceId);
+        MDC.put(TraceIds.MDC_KEY, traceId);
         try {
-            Map<String, Object> snapshot = new HashMap<>(deviceService.queryState(deviceNo));
-            return Map.of("code", 0, "data", snapshot);
-        } catch (IllegalArgumentException e) {
-            return Map.of("code", 1, "msg", e.getMessage());
+            //网络剧本：下行方向断——查询同样不可达（平台 queryState 收 5xx -> null -> 重试路径）
+            if (network.isBlockDownstream()) {
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                        "设备不可达(网络剧本: 下行阻断)");
+            }
+            String deviceNo = req.get("deviceNo") == null ? null : String.valueOf(req.get("deviceNo"));
+            if (deviceNo == null || deviceNo.isBlank()) {
+                return Map.of("code", 1, "msg", "缺少设备编号 deviceNo");
+            }
+            //0.5：查询同样要求平台签名（下行通道同权鉴权）
+            authenticatePlatform(deviceNo, "QUERY", 0, signature);
+            try {
+                Map<String, Object> snapshot = new HashMap<>(deviceService.queryState(deviceNo));
+                return Map.of("code", 0, "data", snapshot);
+            } catch (IllegalArgumentException e) {
+                return Map.of("code", 1, "msg", e.getMessage());
+            }
+        } finally {
+            MDC.remove(TraceIds.MDC_KEY);
         }
     }
 

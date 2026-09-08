@@ -17,17 +17,18 @@ public interface DeviceService {
     /**
      * 升杆：找到设备 -> 裁决并启动动作（异步）
      *
-     * @param seq 平台指令序号（幂等键：重复/乱序指令被设备吸收）
+     * @param seq     平台指令序号（幂等键：重复/乱序指令被设备吸收）
+     * @param traceId 链路跟踪号（平台下发携带，沿用到动作与事件上报）
      * @return 回执消息（"指令已受理" 或 "重复指令已幂等忽略"）
      * @throws IllegalStateException    动作在当前状态不合法（设备拒绝）
      * @throws IllegalArgumentException 设备不存在
      */
-    String open(String deviceNo, long seq);
+    String open(String deviceNo, long seq, String traceId);
 
     /**
      * 降杆：同上（防砸互锁在此生效：杆下有车拒绝降杆）
      */
-    String close(String deviceNo, long seq);
+    String close(String deviceNo, long seq, String traceId);
 
     /**
      * 故障注入（扮演物理世界的意外）：下一个动作将卡杆转 FAULT

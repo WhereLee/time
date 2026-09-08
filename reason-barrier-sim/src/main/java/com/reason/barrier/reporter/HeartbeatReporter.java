@@ -2,12 +2,14 @@ package com.reason.barrier.reporter;
 
 import com.reason.barrier.config.DeviceSignature;
 import com.reason.barrier.config.SimProperties;
+import com.reason.barrier.config.TraceIds;
 import com.reason.barrier.model.Barrier;
 import com.reason.barrier.network.NetworkCondition;
 import com.reason.barrier.registry.BarrierRegistry;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -93,6 +95,18 @@ public class HeartbeatReporter {
 
     private void report(Barrier barrier, String scene) {
         String deviceNo = barrier.getDeviceNo();
+        //批次1 TraceId：心跳是设备自发周期信号（无上游链路），每轮每设备一个 traceId——
+        //使"某台设备某一轮心跳"在两侧日志可精确定位（报文级排障）
+        String traceId = TraceIds.generate();
+        MDC.put(TraceIds.MDC_KEY, traceId);
+        try {
+            doReport(barrier, scene, deviceNo, traceId);
+        } finally {
+            MDC.remove(TraceIds.MDC_KEY);
+        }
+    }
+
+    private void doReport(Barrier barrier, String scene, String deviceNo, String traceId) {
         //网络剧本：上行方向断（T20 单向断：事件+心跳都上不去）——心跳跟随方向断，不消费单次丢包
         if (network.shouldDropHeartbeat()) {
             log.warn("[网络剧本] 心跳被丢弃(上行阻断) deviceNo={}", deviceNo);
@@ -114,6 +128,8 @@ public class HeartbeatReporter {
             headers.setContentType(MediaType.APPLICATION_JSON);
             //0.5 per-device HMAC（心跳签名：deviceNo|state）——共享口令已退役
             headers.set("X-Device-No", deviceNo);
+            //批次1 TraceId 贯穿：平台 TraceIdFilter 吃入站头置 MDC
+            headers.set(TraceIds.HEADER, traceId);
             String secret = properties.secretOf(deviceNo);
             if (secret == null || secret.isEmpty()) {
                 log.error("[{}] {}心跳取消：设备未配置密钥（联调需环境变量注入）", deviceNo, scene);
