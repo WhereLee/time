@@ -151,6 +151,20 @@ class DeviceEventMqIT {
         }
         assertThat(created).as("topic device-event 创建（单队列）").isTrue();
 
+        //1b. 等 namesrv 路由同步（broker 刚启动时 cluster 路由注册有心跳窗口——updateTopic 写 broker 成功
+        //≠ namesrv 可查；producer 启动即 fetch 路由，未同步则 40402 失败，CI 第2跑实测）
+        boolean routed = false;
+        for (int i = 0; i < 12 && !routed; i++) {
+            var route = BROKER.execInContainer("sh",
+                    "/home/rocketmq/rocketmq-5.3.1/bin/mqadmin", "topicRoute",
+                    "-t", TOPIC, "-n", "namesrv:9876");
+            routed = route.getExitCode() == 0 && route.getStdout().contains(TOPIC);
+            if (!routed) {
+                Thread.sleep(5000);
+            }
+        }
+        assertThat(routed).as("topic device-event 路由在 namesrv 就绪").isTrue();
+
         //2. JDBC 注册两台 IT 设备 + 预置流水（Spring context 未起，直连容器）
         try (Connection conn = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
