@@ -21,4 +21,37 @@ public class DeviceChannelProperties {
      * 设备模拟服务地址（指令下发目标）
      */
     private String simBaseUrl;
+
+    /**
+     * MQ 事件消费配置（阶段2：事件走 RocketMQ 与 HTTP 双写并行——D6；
+     * 心跳不走 MQ，留 HTTP 判活——D3）
+     */
+    private Mq mq = new Mq();
+
+    /**
+     * MQ 通道配置（reason.device.mq.*）
+     */
+    @Data
+    public static class Mq {
+
+        /**
+         * 消费开关（false=consumer 不启动，回滚纯 HTTP 形态——回滚路径即双写期设计的本意）
+         */
+        private boolean enabled = true;
+
+        /**
+         * RocketMQ proxy gRPC 端点（5.x 客户端走 gRPC；本机联调 127.0.0.1:8081）
+         */
+        private String endpoint = "127.0.0.1:8081";
+
+        /**
+         * 事件 topic（单队列全局有序——D5 保序）
+         */
+        private String topic = "device-event";
+
+        /**
+         * 消费组（broker 侧 retryMaxTimes=3：重投耗尽进死信 %DLQ%platform-device-event）
+         */
+        private String consumerGroup = "platform-device-event";
+    }
 }

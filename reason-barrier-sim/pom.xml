@@ -24,12 +24,21 @@
 
     <properties>
         <java.version>17</java.version>
+        <!-- RocketMQ 5.x gRPC 客户端（阶段2 事件双写，A2；版本写定禁止 LATEST。
+             注：client-java 版本线独立于服务端，最新 5.2.2 适配 broker 5.3.1——见 document/block-records/MQ-ENV-NOTES.md） -->
+        <rocketmq.client.version>5.2.2</rocketmq.client.version>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <!-- RocketMQ 5.x gRPC 客户端（阶段2：事件双写走 MQ，proxy gRPC 8081） -->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-client-java</artifactId>
+            <version>${rocketmq.client.version}</version>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>

@@ -18,6 +18,16 @@ sim:
   heartbeat-threads: 8
   # 升降动作耗时（毫秒）：模拟真实设备动作非瞬时
   move-millis: 3000
+  # MQ 事件双写（阶段2，D6：事件经 RocketMQ 投递，HTTP 保留并行；心跳不走 MQ——D3）
+  mq:
+    # 双写开关（false=纯 HTTP 回滚形态）
+    enabled: true
+    # RocketMQ proxy gRPC 端点（本机 5.3.1：namesrv 9876 / broker 10911 / proxy 8081）
+    endpoint: 127.0.0.1:8081
+    # 事件 topic（单队列保序——D5；与平台消费订阅一致）
+    topic: device-event
+    # 失败缓冲队列容量（broker 故障积压；满则丢弃最旧记 error，平台 QUERY_STATE 兜底）
+    buffer-size: 500
   # 本进程"安装"的物理杆清单（deviceNo 与平台台账登记对齐——契约握手；
   # secret=0.5 per-device HMAC 密钥，环境变量注入(仓库零明文)，须与平台 device_record.device_secret 同值）
   devices:

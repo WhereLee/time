@@ -61,6 +61,12 @@ public class SimProperties {
     private List<DeviceCfg> devices = new ArrayList<>();
 
     /**
+     * MQ 事件通道（阶段2 双写：事件经 RocketMQ 投递，HTTP 保留并行——D6 双写期；
+     * 心跳不走 MQ——D3 定稿：判活不依赖 broker）
+     */
+    private Mq mq = new Mq();
+
+    /**
      * 按设备号取 HMAC 密钥（null=未配置——fail secure：验签必然失败）
      */
     public String secretOf(String deviceNo) {
@@ -78,5 +84,33 @@ public class SimProperties {
         private String name;
         /** HMAC 密钥（${ENV:} 环境变量注入——仓库零明文） */
         private String secret;
+    }
+
+    /**
+     * MQ 通道配置（sim.mq.*）
+     */
+    @Data
+    public static class Mq {
+
+        /**
+         * 双写开关（false=纯 HTTP 回滚形态，MqEventReporter Bean 不创建）
+         */
+        private boolean enabled = true;
+
+        /**
+         * RocketMQ proxy gRPC 端点（5.x 客户端走 gRPC；本机联调 127.0.0.1:8081）
+         */
+        private String endpoint = "127.0.0.1:8081";
+
+        /**
+         * 事件 topic（与平台消费订阅一致；单队列保序——D5）
+         */
+        private String topic = "device-event";
+
+        /**
+         * 失败缓冲队列容量（broker 故障时事件排队等恢复；满则丢弃最旧记 error，
+         * 平台 QUERY_STATE/对账兜底——分层可靠性，与 HTTP 通道同哲学）
+         */
+        private int bufferSize = 500;
     }
 }

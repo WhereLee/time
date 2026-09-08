@@ -91,6 +91,16 @@ reason:
     # 设备模拟服务地址（本地双进程联调；接真实设备时此处即设备协议网关地址）
     # 注：设备通道鉴权已升级为 per-device HMAC（0.5），共享口令 X-Device-Token 已退役
     sim-base-url: http://127.0.0.1:8300
+    # MQ 事件消费（阶段2：事件走 RocketMQ 与 HTTP 双写并行——D6；心跳留 HTTP 判活——D3）
+    mq:
+      # 消费开关（false=consumer 不启动，回滚纯 HTTP 形态）
+      enabled: true
+      # RocketMQ proxy gRPC 端点（本机 5.3.1：namesrv 9876 / broker 10911 / proxy 8081）
+      endpoint: 127.0.0.1:8081
+      # 事件 topic（单队列全局有序——D5 保序）
+      topic: device-event
+      # 消费组（broker 侧 retryMaxTimes=3：重投耗尽进死信）
+      consumer-group: platform-device-event
   barrier:
     # 自动升降总开关（false=只手动，演示"纯人工接管"形态）
     auto-enabled: true

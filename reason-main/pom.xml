@@ -15,9 +15,18 @@
 
     <properties>
         <google.zxing.version>3.5.3</google.zxing.version>
+        <!-- RocketMQ 5.x gRPC 客户端（阶段2 事件通道，A1；版本写定禁止 LATEST。
+             注：client-java 版本线独立于服务端，最新 5.2.2 适配 broker 5.3.1——见 document/block-records/MQ-ENV-NOTES.md） -->
+        <rocketmq.client.version>5.2.2</rocketmq.client.version>
     </properties>
 
     <dependencies>
+        <!-- RocketMQ 5.x gRPC 客户端（阶段2：设备事件消费，走 proxy gRPC 8081） -->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-client-java</artifactId>
+            <version>${rocketmq.client.version}</version>
+        </dependency>
         <!-- google 二维码生成 -->
         <dependency>
             <groupId>com.google.zxing</groupId>
