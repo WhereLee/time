@@ -100,7 +100,9 @@ class DeviceEventMqIT {
 
     /** broker 内嵌 proxy（--enable-proxy）：gRPC 8081 与 remoting 10911 同进程。
      *  就绪信号用 proxy 的 "startup successfully"（内嵌模式下 broker 先起、proxy 后起——
-     *  proxy 成功即 broker+gRPC 均就绪；等 broker 的 "boot success" 会因日志措辞差异超时，CI 首跑实测） */
+     *  proxy 成功即 broker+gRPC 均就绪；等 broker 的 "boot success" 会因日志措辞差异超时，CI 首跑实测）。
+     *  autoCreateTopicEnable=true + defaultTopicQueueNums=1：topic 由首条消息自动建（单队列，D5）——
+     *  容器内 mqadmin 建 topic 静默失败/路由不同步（CI 第2/3跑实测），改走 broker 自动建避开工具链不确定性 */
     @Container
     static final GenericContainer<?> BROKER =
             new GenericContainer<>(DockerImageName.parse("apache/rocketmq:5.3.1"))
@@ -108,7 +110,8 @@ class DeviceEventMqIT {
                     .withNetworkAliases("broker")
                     .withExposedPorts(10911, 8081)
                     .withCommand("sh", "/home/rocketmq/rocketmq-5.3.1/bin/mqbroker",
-                            "--enable-proxy", "-n", "namesrv:9876")
+                            "--enable-proxy", "-n", "namesrv:9876",
+                            "autoCreateTopicEnable=true", "defaultTopicQueueNums=1")
                     .waitingFor(Wait.forLogMessage(".*startup successfully.*", 1)
                             .withStartupTimeout(Duration.ofSeconds(180)));
 
@@ -133,39 +136,14 @@ class DeviceEventMqIT {
 
     /**
      * Spring context 起前准备（容器已由 @Container 启动）：
-     * 建 topic 单队列 → JDBC 注册设备/预置流水 → 发积压消息（用例④）→ 建 producer
+     * JDBC 注册设备/预置流水 → 发积压消息（用例④，首条消息触发 autoCreateTopic 建 topic）→ 建 producer
      */
     @BeforeAll
     static void setUpBrokerAndBacklog() throws Exception {
-        //1. 建 topic（单读写队列——D5 全局有序；5.x broker autoCreateTopic 默认关，必须显式建）
-        //mqadmin 走 broker 容器内绝对路径；失败重试 3 次（broker 就绪与 cluster 注册有秒级窗口）
-        boolean created = false;
-        for (int i = 0; i < 3 && !created; i++) {
-            var result = BROKER.execInContainer("sh",
-                    "/home/rocketmq/rocketmq-5.3.1/bin/mqadmin", "updateTopic",
-                    "-n", "namesrv:9876", "-t", TOPIC, "-c", "DefaultCluster", "-w", "1", "-r", "1");
-            created = result.getExitCode() == 0;
-            if (!created) {
-                Thread.sleep(5000);
-            }
-        }
-        assertThat(created).as("topic device-event 创建（单队列）").isTrue();
+        //topic 由 broker autoCreateTopicEnable 在首条消息时自动建（单队列 defaultTopicQueueNums=1）——
+        //容器内 mqadmin 建 topic 静默失败/路由不同步（CI 第2/3跑实测），改走自动建避开工具链不确定性
 
-        //1b. 等 namesrv 路由同步（broker 刚启动时 cluster 路由注册有心跳窗口——updateTopic 写 broker 成功
-        //≠ namesrv 可查；producer 启动即 fetch 路由，未同步则 40402 失败，CI 第2跑实测）
-        boolean routed = false;
-        for (int i = 0; i < 12 && !routed; i++) {
-            var route = BROKER.execInContainer("sh",
-                    "/home/rocketmq/rocketmq-5.3.1/bin/mqadmin", "topicRoute",
-                    "-t", TOPIC, "-n", "namesrv:9876");
-            routed = route.getExitCode() == 0 && route.getStdout().contains(TOPIC);
-            if (!routed) {
-                Thread.sleep(5000);
-            }
-        }
-        assertThat(routed).as("topic device-event 路由在 namesrv 就绪").isTrue();
-
-        //2. JDBC 注册两台 IT 设备 + 预置流水（Spring context 未起，直连容器）
+        //1. JDBC 注册两台 IT 设备 + 预置流水（Spring context 未起，直连容器）
         try (Connection conn = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              Statement st = conn.createStatement()) {
@@ -185,15 +163,14 @@ class DeviceEventMqIT {
                     + DEVICE_NO + "', 'CLOSE', 8, 1, 0, 0, " + now + ")");
         }
 
-        //3. producer（测试侧模拟 sim 发送）
+        //2. producer（测试侧模拟 sim 发送）——不 setTopics：跳过启动时路由校验（topic 尚未由首条消息自动建）
         producer = ClientServiceProvider.loadService().newProducerBuilder()
                 .setClientConfiguration(ClientConfiguration.newBuilder()
                         .setEndpoints(BROKER.getHost() + ":" + BROKER.getMappedPort(8081))
                         .build())
-                .setTopics(TOPIC)
                 .build();
 
-        //4. 积压消息（用例④）：此刻 Spring context 未起、平台 consumer 未连——消息在 broker 积压，
+        //3. 积压消息（用例④）：此刻 Spring context 未起、平台 consumer 未连——消息在 broker 积压（首条触发 autoCreateTopic），
         //context 起后 consumer 连上应全部消费（"平台重启窗口零丢失"的等价实证）
         send(DEVICE_NO_BACKLOG, 1, null, "it-boot-backlog", 1, true);
     }
