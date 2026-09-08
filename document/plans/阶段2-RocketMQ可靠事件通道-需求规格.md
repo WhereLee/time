@@ -60,7 +60,7 @@
 | D5 消费有序性 | **单队列全局有序 + 平台消费并发度=1** | 平台序守卫把乱序迟到真事件当旧序拒=丢数据；本地样例量级下单队列绝对保序且零 FIFO 配置负担 |
 | D6 退役时机 | **双写期（HTTP+MQ 并行）为本阶段终态**；平台以 MQ 为准体现在：退役判定（阶段 3）只看 MQ 覆盖 | 无双写期则 MQ 侧事故只能整体回滚 |
 | D7 事件时间基准 | 处理时刻为准（现状不引入设备采样时刻字段） | 单一时钟源铁律延续 |
-| 客户端选型 | **探测分支（§4-A3 探测后照表执行）**：gRPC 可用 → `rocketmq-client-java` 5.x（Apache 官方 5.x 客户端）；仅 remoting → `rocketmq-client` 5.x（remoting，经典 PushConsumer） | 不引 rocketmq-spring-boot-starter：其 2.3.x 止步 4.x remoting 模型，5.x 演进中被官方边缘化 |
+| 客户端选型 | **已定稿（探测完成 2026-09-08）：`rocketmq-client-java` 5.3.x**（gRPC 协议）——本机 broker 5.3.1 的 proxy gRPC 8081 已实测可用（namesrv 9876 / broker 10911 / proxy 8081 三端口全通） | 不引 rocketmq-spring-boot-starter：其 2.3.x 止步 4.x remoting 模型，5.x 演进中被官方边缘化 |
 
 ## 4. 需求分解（实现顺序 A→G；每子步可独立提交）
 
@@ -68,10 +68,8 @@
 
 **A1** reason-main `pom.xml`：按 §3 探测结果加客户端依赖（版本号写定，禁止 LATEST）。
 **A2** reason-barrier-sim `pom.xml`：同上（producer 侧）。
-**A3（第一步执行）broker 探测**（本机 RocketMQ 5.3.1，Windows）：确认 namesrv(9876)/broker remoting(10911)/gRPC proxy(8081 默认，若 5.x local proxy 模式) 监听状态与 broker 版本；结果写入交付物 `MQ-ENV-NOTES.md`（探测命令+输出+选型结论）。**照表执行**：
-- gRPC 8081 通 → rocketmq-client-java（org.apache.rocketmq:rocketmq-client-java:5.3.x）
-- 仅 10911 → rocketmq-client（org.apache.rocketmq:rocketmq-client:5.3.x，PushConsumer/DefaultMQProducer）
-**A4 topic 创建**（本机 mqadmin 或 dashboard）：`device-event` 单读写队列（writeQueueN=1, readQueueN=1），消费组 `platform-device-event`。创建命令与结果记入 MQ-ENV-NOTES.md。topic 名/消费组名与配置项一致。
+**A3（已由主 agent 于 2026-09-08 探测完成，直接采用结论）** broker 环境：本机 RocketMQ 5.3.1（`ROCKETMQ_HOME=D:\rocketmq-5.3.1\rocketmq-all-5.3.1-bin-release`），**gRPC 8081 可用（proxy cluster 模式）** → 客户端定稿 `org.apache.rocketmq:rocketmq-client-java:5.3.x`（gRPC 端点 `127.0.0.1:8081`）。本机三进程启动：双击 `D:\rocketmq-5.3.1\start-rocketmq.bat`（namesrv+broker+proxy 三个窗口）；proxy 配置 `conf/proxy-dev.json`（JSON 格式——注意 5.3.1 mqproxy 参数为 `-pm cluster -n 127.0.0.1:9876 -pc <json>`，非 -c；配置文件是 JSON 非 properties，踩坑记录见 D:\rocketmq-5.3.1 目录注释）。若代理窗口失败，remoting 10911 仍可用（降级分支见 §3）。
+**A4** topic 创建：`device-event` 单读写队列（writeQueueN=1, readQueueN=1），消费组 `platform-device-event`。创建命令与结果记入 MQ-ENV-NOTES.md。
 
 ### B. sim 侧 MQ 事件发送器（reason-barrier-sim）
 
