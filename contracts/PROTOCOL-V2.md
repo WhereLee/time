@@ -54,6 +54,7 @@
 }
 ```
 - 签名域（0.5 启用，语义层现定）：HMAC-SHA256 覆盖规范化字段集 `deviceNo|state|commandSeq|bootId|eventSeq`，置传输头（HTTP `X-Device-Sign`，MQ 迁 message property）；验签先于 XssFilter。
+- 链路跟踪（批次1 启用，传输适配层）：HTTP 携 `X-Trace-Id` 头 / MQ 携 `traceId` property——平台下行指令也携此头，设备沿用后上报，使"管理端点击/任务轮次 → 下发 → 设备执行 → 事件上报 → 台账销账"全链路同号（报文级定位）。
 - 兼容策略：**双端同仓同步发布，v2 字段必填，无 v1 兼容层**（样例双端同发；若将来出现存量旧设备，另行评估网关翻译层）。
 
 ### 3.2 事件-平台动作映射（v2 语义——销账必须证据驱动）
@@ -103,7 +104,7 @@
 ### 7.1 消息信封
 - **topic**：`device-event`（单读写队列 writeQueueNums=readQueueNums=1——全局有序，D5）；**消费组**：`platform-device-event`（broker 侧 retryMaxTimes=3，耗尽进死信 `%DLQ%platform-device-event`）。
 - **消息体**：§3.1 报文原样 JSON（deviceNo/state/commandSeq/bootId/eventSeq，与 HTTP body 完全同构，commandSeq 可空）。
-- **message property**：`X-Device-No`（设备号）、`X-Device-Sign`（签名，canonical 与 §3.1 同一拼法 `deviceNo|state|commandSeq|bootId|eventSeq`，HMAC-SHA256 per-device secret）。
+- **message property**：`X-Device-No`（设备号）、`X-Device-Sign`（签名，canonical 与 §3.1 同一拼法 `deviceNo|state|commandSeq|bootId|eventSeq`，HMAC-SHA256 per-device secret）、`traceId`（批次1 链路贯穿：与 HTTP `X-Trace-Id` 同值，平台消费侧取出置 MDC）。
 - **keys**：`{deviceNo}-{eventSeq}`（broker 侧排查锚点，不参与业务）。
 - **信封完整性**：property `X-Device-No` 必须与消息体 `deviceNo` 一致（不一致=信封被拼改，毒消息）。
 
