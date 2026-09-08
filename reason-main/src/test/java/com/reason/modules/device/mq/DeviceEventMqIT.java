@@ -98,7 +98,9 @@ class DeviceEventMqIT {
                     .withCommand("sh", "/home/rocketmq/rocketmq-5.3.1/bin/mqnamesrv")
                     .waitingFor(Wait.forListeningPort());
 
-    /** broker 内嵌 proxy（--enable-proxy）：gRPC 8081 与 remoting 10911 同进程 */
+    /** broker 内嵌 proxy（--enable-proxy）：gRPC 8081 与 remoting 10911 同进程。
+     *  就绪信号用 proxy 的 "startup successfully"（内嵌模式下 broker 先起、proxy 后起——
+     *  proxy 成功即 broker+gRPC 均就绪；等 broker 的 "boot success" 会因日志措辞差异超时，CI 首跑实测） */
     @Container
     static final GenericContainer<?> BROKER =
             new GenericContainer<>(DockerImageName.parse("apache/rocketmq:5.3.1"))
@@ -107,7 +109,7 @@ class DeviceEventMqIT {
                     .withExposedPorts(10911, 8081)
                     .withCommand("sh", "/home/rocketmq/rocketmq-5.3.1/bin/mqbroker",
                             "--enable-proxy", "-n", "namesrv:9876")
-                    .waitingFor(Wait.forLogMessage(".*boot success.*", 1)
+                    .waitingFor(Wait.forLogMessage(".*startup successfully.*", 1)
                             .withStartupTimeout(Duration.ofSeconds(180)));
 
     static Producer producer;
