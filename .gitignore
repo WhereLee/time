@@ -14,6 +14,7 @@
 /reason-device-sim/target
 /reason-barrier-sim/target
 /reason-barrier-sim/sim-logs/
+/reason-barrier-sim/batch-secrets.properties
 
 # local redis dump files (accidental artifacts)
 *.rdb
