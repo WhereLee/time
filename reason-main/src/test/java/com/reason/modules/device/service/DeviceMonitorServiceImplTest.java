@@ -13,9 +13,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -117,5 +119,49 @@ class DeviceMonitorServiceImplTest {
                 .hasMessageContaining("未登记");
         verify(deviceAlarmService, never()).markOnlineRecovered(anyString());
         verify(valueOperations, never()).set(anyString(), anyString(), anyLong(), any());
+    }
+
+    @Test
+    @DisplayName("scanOffline（批次2 B6）：pipeline 批量判定一次往返——仅离线集 raise，在线零误报")
+    void scanOffline_pipeline批量判定() {
+        when(barrierProperties.getOnlineStartupGraceSeconds()).thenReturn(90);
+        //两台接入过设备（未接入过滤是查询 SQL 职责，单测不模拟）：E-01 心跳 key 过期（离线）、W-02 在线
+        DeviceRecordEntity offline = record(DeviceState.UP.getCode());
+        offline.setDeviceNo("BARRIER-E-01");
+        DeviceRecordEntity online = record(DeviceState.UP.getCode());
+        online.setDeviceNo("BARRIER-W-02");
+        when(recordDao.selectList(any())).thenReturn(List.of(offline, online));
+        //pipeline 返回逐 key EXISTS 结果（E-01 过期=false，W-02=true）；匹配器必须内联（变量传递会被当字面量）
+        when(stringRedisTemplate.executePipelined(any(RedisCallback.class)))
+                .thenReturn(List.of(Boolean.FALSE, Boolean.TRUE));
+
+        monitorService.scanOffline();
+
+        //离线集=E-01 一条：raise OFFLINE；在线（W-02）零 raise（无误报）
+        verify(deviceAlarmService).raise(eq("BARRIER-E-01"), eq(AlarmType.OFFLINE), anyString());
+        verify(deviceAlarmService, never()).raise(eq("BARRIER-W-02"), eq(AlarmType.OFFLINE), anyString());
+        //批量判定经 pipeline 单次往返（不再逐台 hasKey）
+        verify(stringRedisTemplate).executePipelined(any(RedisCallback.class));
+    }
+
+    @Test
+    @DisplayName("scanOffline：无接入过设备（空集）→ 跳过扫描零 Redis 往返")
+    void scanOffline_空集跳过() {
+        when(barrierProperties.getOnlineStartupGraceSeconds()).thenReturn(90);
+        when(recordDao.selectList(any())).thenReturn(List.of());
+
+        monitorService.scanOffline();
+
+        verify(stringRedisTemplate, never()).executePipelined(any(RedisCallback.class));
+        verify(deviceAlarmService, never()).raise(anyString(), eq(AlarmType.OFFLINE), anyString());
+    }
+
+    @Test
+    @DisplayName("scanOffline：启动宽限期内跳过（平台重启恢复不误报全量离线）")
+    void scanOffline_启动宽限跳过() {
+        when(barrierProperties.getOnlineStartupGraceSeconds()).thenReturn(Integer.MAX_VALUE);
+        monitorService.scanOffline();
+        verify(recordDao, never()).selectList(any());
+        verify(stringRedisTemplate, never()).executePipelined(any(RedisCallback.class));
     }
 }
