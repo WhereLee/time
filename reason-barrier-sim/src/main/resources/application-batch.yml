@@ -1,0 +1,12 @@
+# 批量（50 台）剧本 profile（批次2，B1/B2/B3）——零密钥；密钥由 ./batch-secrets.properties 注入（gitignore）
+# 启动：mvn spring-boot:run -Dspring-boot.run.profiles=batch  或  java -jar ... --spring.profiles.active=batch
+# 其余配置（端口/平台地址/动作耗时等）继承主 application.yml
+sim:
+  # 生成式模式：清单完全由 前缀+序号 派生（显式 devices 列表忽略——B1 二选一）
+  device-count: 50
+  device-no-prefix: BARRIER-B-
+  device-name-prefix: 批量杆-
+  # 密钥文件（登记脚本一次产出两份：本平台 save 请求体 + 本文件；每行 deviceNo=32hex）
+  secret-file: ./batch-secrets.properties
+  # 50 台心跳洪峰（5rps）+ 延迟注入余量（B9 标定）
+  heartbeat-threads: 16

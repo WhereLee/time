@@ -14,11 +14,14 @@ import com.reason.modules.device.service.DeviceMonitorService;
 import com.reason.modules.device.service.DeviceRecordService;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * 设备监控服务实现
@@ -141,10 +144,23 @@ public class DeviceMonitorServiceImpl implements DeviceMonitorService {
         //只扫"接入过"的设备（状态≠未接入）：从未上线的设备没有心跳是常态，不算离线异常
         List<DeviceRecordEntity> records = recordDao.selectList(new LambdaQueryWrapper<DeviceRecordEntity>()
                 .ne(DeviceRecordEntity::getDeviceState, DeviceState.NOT_CONNECTED.getCode()));
-        for (DeviceRecordEntity record : records) {
-            //样例设备量级逐个 EXISTS 足够；生产海量设备用 pipeline 批量判定（此处注明不实现）
-            if (!isOnline(record.getDeviceNo())) {
-                deviceAlarmService.raise(record.getDeviceNo(), AlarmType.OFFLINE,
+        if (records.isEmpty()) {
+            return;
+        }
+        //批次2 B6 批量判定：一次 pipeline 往返查全部 online key（原逐台 EXISTS——50 台洪峰下
+        //50 次 Redis 往返/轮，与台账列表页 T15 同手法）；pipeline 异常保持现状冒泡
+        //（任务失败进 schedule_job_log，阶段1 T12 修复后日志带根因）
+        List<byte[]> keys = records.stream()
+                .map(r -> (BarrierRedisKeys.ONLINE_PREFIX + r.getDeviceNo()).getBytes(StandardCharsets.UTF_8))
+                .collect(Collectors.toList());
+        List<Object> results = stringRedisTemplate.executePipelined(
+                (RedisCallback<Object>) conn -> {
+                    keys.forEach(conn::exists);
+                    return null;
+                });
+        for (int i = 0; i < records.size(); i++) {
+            if (!Boolean.TRUE.equals(results.get(i))) {
+                deviceAlarmService.raise(records.get(i).getDeviceNo(), AlarmType.OFFLINE,
                         "心跳超时(>" + barrierProperties.getHeartbeatTimeoutSeconds() + "s)未收到，判定离线");
             }
         }

@@ -3,8 +3,14 @@ package com.reason.barrier.config;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 模拟器配置（sim.*）
@@ -12,6 +18,10 @@ import java.util.List;
  * <p>devices：本进程"安装"的物理设备清单（与平台台账编号对齐——设备上电即存在，
  * 台账由管理端登记，两边靠 deviceNo 契约对齐）；moveMillis：模拟升降耗时（真实设备
  * 升降非瞬时，到位需要时间）。</p>
+ *
+ * <p>批量形态（批次2，B1）：deviceCount==0（默认）→ 设备清单=显式 devices（日常 2 台语义零回归）；
+ * >0 → 清单完全由生成式构成（前缀+序号派生 deviceNo/name，密钥从 secretFile 加载，
+ * 显式列表整单忽略）。批量剧本用 application-batch.yml（不污染日常配置）。</p>
  */
 @Data
 @ConfigurationProperties(prefix = "sim")
@@ -50,15 +60,39 @@ public class SimProperties {
 
     /**
      * 心跳并行线程上限（P5：单线程逐台串行阻塞 = T11 节拍塌缩根因——每设备独立调度、
-     * 谁慢只丢自己的轮；上限防设备数膨胀后线程泛滥，阶段 3 批量设备按需调）
+     * 谁慢只丢自己的轮；批次2 B9 默认 8→16：50 台节拍 5rps + 延迟注入余量
+     * （50 台 × 2s 延迟 / 10s 节拍 ≈ 10 并发需求 <16）；池化常驻成本可忽略，2 台日常无感）
      */
-    private int heartbeatThreads = 8;
+    private int heartbeatThreads = 16;
 
     /**
      * 安装的设备清单（与平台台账 deviceNo 对齐；secret 为 0.5 per-device HMAC 密钥——
-     * 环境变量注入（仓库零明文），须与平台 device_record.device_secret 同值）
+     * 环境变量注入（仓库零明文），须与平台 device_record.device_secret 同值。
+     * 批次2：仅 deviceCount==0 时生效；>0 时整单被生成式清单替代）
      */
     private List<DeviceCfg> devices = new ArrayList<>();
+
+    /**
+     * 批量生成设备总数（批次2，B1：0=显式清单模式（默认，日常语义不变）；>0=生成式模式，
+     * deviceNo/name 按前缀+序号派生，显式 devices 列表忽略）
+     */
+    private int deviceCount = 0;
+
+    /**
+     * 生成式设备编号前缀（deviceNo={前缀}{序号 %02d}，序号 1 起：BARRIER-B-01…50）
+     */
+    private String deviceNoPrefix = "BARRIER-B-";
+
+    /**
+     * 生成式设备名称前缀（name={前缀}{序号 %02d}：批量杆-01…50）
+     */
+    private String deviceNamePrefix = "批量杆-";
+
+    /**
+     * 批量设备密钥文件（批次2，B3：每行 deviceNo=32hex，# 注释行；sim 侧"出厂烧录"语义——
+     * 仓库零明文，路径须 gitignore；与平台登记入参 deviceSecret 由同一登记脚本一次产出两份）
+     */
+    private String secretFile = "";
 
     /**
      * MQ 事件通道（阶段2 双写：事件经 RocketMQ 投递，HTTP 保留并行——D6 双写期；
@@ -66,8 +100,13 @@ public class SimProperties {
      */
     private Mq mq = new Mq();
 
+    /** 密钥文件加载缓存（null=尚未加载；加载一次后 effectiveDevices 复用） */
+    private volatile Map<String, String> secretCache;
+
     /**
-     * 按设备号取 HMAC 密钥（null=未配置——fail secure：验签必然失败）
+     * 按设备号取 HMAC 密钥（null=未配置——fail secure：验签必然失败）。
+     * 批次2 补漏：生成式模式（deviceCount>0）下显式 devices 为空——reporter 取密钥须回退查
+     * 密钥文件缓存（loadSecrets），否则 50 台全部"未配置密钥"（首跑实测暴露）
      */
     public String secretOf(String deviceNo) {
         for (DeviceCfg cfg : devices) {
@@ -75,14 +114,83 @@ public class SimProperties {
                 return cfg.getSecret();
             }
         }
+        if (deviceCount > 0) {
+            return loadSecrets().getOrDefault(deviceNo, null);
+        }
         return null;
+    }
+
+    /**
+     * 本进程生效的设备清单（批次2，B1 二选一）：生成式模式下按派生规则构建，
+     * 密钥从 secretFile 取（文件未配/设备缺行 → secret 置空串，走现有 fail-safe 路径）
+     */
+    public List<DeviceCfg> effectiveDevices() {
+        if (deviceCount <= 0) {
+            return devices;
+        }
+        Map<String, String> secrets = loadSecrets();
+        List<DeviceCfg> generated = new ArrayList<>(deviceCount);
+        for (int i = 1; i <= deviceCount; i++) {
+            DeviceCfg cfg = new DeviceCfg();
+            String deviceNo = deviceNoPrefix + String.format("%02d", i);
+            cfg.setDeviceNo(deviceNo);
+            cfg.setName(deviceNamePrefix + String.format("%02d", i));
+            cfg.setSecret(secrets.getOrDefault(deviceNo, ""));
+            generated.add(cfg);
+        }
+        return generated;
+    }
+
+    /**
+     * 密钥文件加载（只读一次，缓存复用）：配置了但文件不存在 → 启动 fail-fast（B4：
+     * 配置错位立即暴露——50 台全静默不上报是最难发现的事故形态）
+     */
+    private Map<String, String> loadSecrets() {
+        Map<String, String> cache = secretCache;
+        if (cache != null) {
+            return cache;
+        }
+        synchronized (this) {
+            if (secretCache == null) {
+                secretCache = parseSecretFile();
+            }
+            return secretCache;
+        }
+    }
+
+    private Map<String, String> parseSecretFile() {
+        if (secretFile == null || secretFile.isBlank()) {
+            return Map.of();
+        }
+        Path path = Path.of(secretFile);
+        if (!Files.exists(path)) {
+            throw new IllegalStateException(
+                    "sim.secret-file 已配置但文件不存在: " + path.toAbsolutePath() + "（批次2 B4 fail-fast：配置错位立即暴露）");
+        }
+        Map<String, String> secrets = new HashMap<>();
+        try {
+            for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
+                String trimmed = line.trim();
+                if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                    continue;
+                }
+                int idx = trimmed.indexOf('=');
+                if (idx <= 0) {
+                    continue;
+                }
+                secrets.put(trimmed.substring(0, idx).trim(), trimmed.substring(idx + 1).trim());
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("sim.secret-file 读取失败: " + path.toAbsolutePath(), e);
+        }
+        return secrets;
     }
 
     @Data
     public static class DeviceCfg {
         private String deviceNo;
         private String name;
-        /** HMAC 密钥（${ENV:} 环境变量注入——仓库零明文） */
+        /** HMAC 密钥（${ENV:} 环境变量注入/批量密钥文件注入——仓库零明文） */
         private String secret;
     }
 

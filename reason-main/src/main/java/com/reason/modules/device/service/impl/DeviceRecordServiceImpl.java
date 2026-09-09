@@ -37,6 +37,9 @@ import java.util.stream.Collectors;
 public class DeviceRecordServiceImpl extends ServiceImpl<DeviceRecordDao, DeviceRecordEntity>
         implements DeviceRecordService {
 
+    /** 显式密钥格式（批次2 B3：只允许强随机 32hex——弱密钥/口语化密钥被挡住） */
+    private static final String SECRET_PATTERN = "^[0-9a-f]{32}$";
+
     private final StringRedisTemplate stringRedisTemplate;
 
     public DeviceRecordServiceImpl(StringRedisTemplate stringRedisTemplate) {
@@ -96,8 +99,17 @@ public class DeviceRecordServiceImpl extends ServiceImpl<DeviceRecordDao, Device
         entity.setLocation(form.getLocation());
         entity.setDeviceState(DeviceState.NOT_CONNECTED.getCode()); //建档恒为未接入，状态由设备事件驱动
         //0.5 per-device 凭证：登记即生成 HMAC 密钥（32hex 随机）——仓库零明文，DB 存储，
-        //设备侧配置同值（真实流程为设备出厂/安装时烧录，样例为联调配置同步）
-        entity.setDeviceSecret(UUID.randomUUID().toString().replace("-", ""));
+        //设备侧配置同值（真实流程为设备出厂/安装时烧录，样例为联调配置同步）；
+        //批次2 B3：登记脚本批量形态支持显式指定（空=现随机生成；非空=只允许强随机 32hex——
+        //弱密钥/口语化密钥被格式校验挡住，接口本身有 device:record:save 权限守护）
+        if (StringUtils.isNotBlank(form.getDeviceSecret())) {
+            if (!form.getDeviceSecret().matches(SECRET_PATTERN)) {
+                throw new RRException("设备密钥格式不合法（须为 32 位小写十六进制 ^[0-9a-f]{32}$）: " + form.getDeviceNo());
+            }
+            entity.setDeviceSecret(form.getDeviceSecret());
+        } else {
+            entity.setDeviceSecret(UUID.randomUUID().toString().replace("-", ""));
+        }
         entity.setDeviceRemark(form.getDeviceRemark());
         entity.setDeviceCreator(userId);
         long now = System.currentTimeMillis() / 1000;

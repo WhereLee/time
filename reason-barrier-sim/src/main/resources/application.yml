@@ -14,8 +14,9 @@ sim:
   # HTTP 超时（秒）——P5 参数化：原硬编码 2s/3s；可配 5-10s 按注入器剧本标定，留抖动余量
   connect-timeout-seconds: 2
   read-timeout-seconds: 5
-  # 心跳并行线程上限（P5：每设备独立节拍，一台慢只丢自己的轮，不拖垮整组）
-  heartbeat-threads: 8
+  # 心跳并行线程上限（P5：每设备独立节拍，一台慢只丢自己的轮，不拖垮整组；
+  # 批次2 B9 默认 8→16：50 台节拍 5rps + 延迟注入余量 ≈10 并发需求 <16，2 台日常无感）
+  heartbeat-threads: 16
   # 升降动作耗时（毫秒）：模拟真实设备动作非瞬时
   move-millis: 3000
   # MQ 事件双写（阶段2，D6：事件经 RocketMQ 投递，HTTP 保留并行；心跳不走 MQ——D3）

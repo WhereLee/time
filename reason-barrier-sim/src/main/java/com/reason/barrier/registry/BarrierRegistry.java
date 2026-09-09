@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -40,12 +41,17 @@ public class BarrierRegistry {
 
     @PostConstruct
     public void init() {
-        for (SimProperties.DeviceCfg cfg : properties.getDevices()) {
+        //批次2：effectiveDevices() 二选一——device-count>0 时清单完全由生成式构成（显式 devices 忽略，
+        //配置错位由 secretFile fail-fast 提前暴露）；0 时维持显式清单（日常 2 台语义零回归）
+        List<SimProperties.DeviceCfg> effective = properties.effectiveDevices();
+        for (SimProperties.DeviceCfg cfg : effective) {
             barriers.put(cfg.getDeviceNo(),
                     new Barrier(cfg.getDeviceNo(), cfg.getName(), properties.getMoveMillis(), reporter, bootId));
         }
-        log.info("设备注册完成：{} 台，bootId={}（重启代际——平台事件序守卫依据）",
-                barriers.size(), bootId);
+        log.info("设备注册完成：{} 台（{}），bootId={}（重启代际——平台事件序守卫依据）",
+                barriers.size(), properties.getDeviceCount() > 0
+                        ? "生成式 " + barriers.size() + " 台 + 显式 0 台"
+                        : "显式 " + barriers.size() + " 台", bootId);
     }
 
     /**

@@ -133,11 +133,16 @@ public class SimController {
     /**
      * 网络剧本注入（应用层注入器——逻辑形态：设备链路不可信，故障可本地制造、可进自动化剧本）
      *
-     * <p>body：{blockUpstream, blockDownstream, dropNextEvent, heartbeatDelayMillis}（缺省关）。
+     * <p>body：{blockUpstream, blockEvents, blockDownstream, dropNextEvent, heartbeatDelayMillis,
+     * eventDelayMillis, replayNextEvent, reorderDeviceNo}（缺省关）。
      * blockUpstream=上行断（事件+心跳都上不去——T20 单向断剧本）；
      * blockDownstream=下行断（入站指令/查询被拒——反向单向断剧本）；
      * dropNextEvent=丢下一次事件上报（验证上报失败退避重试）；
-     * heartbeatDelayMillis=心跳人为延迟毫秒（P5/T11：慢设备不拖垮整组节拍的验证剧本）。</p>
+     * heartbeatDelayMillis=心跳人为延迟毫秒（P5/T11：慢设备不拖垮整组节拍的验证剧本）；
+     * eventDelayMillis=事件发送前人为延迟毫秒（批次2，持续生效 0 关——打心跳对账 grace 边界）；
+     * replayNextEvent=下一条成功送达的事件同报文重发 1 次（批次2，一次性——平台幂等吸收验证）；
+     * reorderDeviceNo=该设备下两条事件集齐后按 eventSeq 降序发送（批次2，一次性——平台序守卫拒旧序验证）。
+     * 批次2 三开关全部只作用于 HTTP 事件通道（MQ 通道故障剧本=真实停起 broker）。</p>
      */
     @PostMapping("/network")
     public Map<String, Object> network(@RequestBody Map<String, Object> req) {
@@ -147,14 +152,22 @@ public class SimController {
         boolean drop = Boolean.parseBoolean(String.valueOf(req.get("dropNextEvent")));
         long hbDelay = req.get("heartbeatDelayMillis") == null ? 0
                 : Long.parseLong(String.valueOf(req.get("heartbeatDelayMillis")));
+        long eventDelay = req.get("eventDelayMillis") == null ? 0
+                : Long.parseLong(String.valueOf(req.get("eventDelayMillis")));
+        boolean replay = Boolean.parseBoolean(String.valueOf(req.get("replayNextEvent")));
+        Object reorder = req.get("reorderDeviceNo");
         network.setBlockUpstream(up);
         network.setBlockEvents(events);
         network.setBlockDownstream(down);
         network.setDropNextEvent(drop);
         network.setHeartbeatDelayMillis(hbDelay);
+        network.setEventDelayMillis(eventDelay);
+        network.setReplayNextEvent(replay);
+        network.setReorderNextDeviceNo(reorder == null ? null : String.valueOf(reorder));
         return Map.of("code", 0,
-                "msg", String.format("网络剧本已设：上行阻断=%s 事件独立断=%s 下行阻断=%s 丢下一次事件=%s 心跳延迟=%sms",
-                        up, events, down, drop, hbDelay));
+                "msg", String.format("网络剧本已设：上行阻断=%s 事件独立断=%s 下行阻断=%s 丢下一次事件=%s 心跳延迟=%sms"
+                                + " 事件延迟=%sms 重放布防=%s 乱序布防=%s",
+                        up, events, down, drop, hbDelay, eventDelay, replay, reorder));
     }
 
     private Map<String, Object> invoke(String deviceNo, java.util.function.Function<String, String> op) {

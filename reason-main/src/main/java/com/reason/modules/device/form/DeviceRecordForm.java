@@ -34,4 +34,8 @@ public class DeviceRecordForm extends CommonForm {
 
     @Schema(description = "备注（登记用）")
     private String deviceRemark;
+
+    @Schema(description = "设备 HMAC 密钥（登记可选；批次2 批量联调剧本使用——登记脚本产出的 32hex 强随机值，"
+            + "仓库零明文；空=平台随机生成（日常登记不传），非空=校验 ^[0-9a-f]{32}$ 后采用）")
+    private String deviceSecret;
 }

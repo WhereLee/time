@@ -18,8 +18,11 @@ import com.reason.modules.device.form.DeviceAlarmForm;
 import com.reason.modules.device.service.DeviceAlarmService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -34,6 +37,15 @@ import java.util.concurrent.TimeUnit;
 @Service("deviceAlarmService")
 public class DeviceAlarmServiceImpl extends ServiceImpl<DeviceAlarmDao, DeviceAlarmEntity>
         implements DeviceAlarmService {
+
+    /**
+     * 原子取删脚本（GETDEL 语义）：Redis 6.2+ 才有原生 GETDEL，本地/低版本 5.0 实测不支持
+     * （G1 剧本暴露：GETDEL 报 unknown command，门控退化为每轮心跳降级 WARN+空 UPDATE）——
+     * LUA 在服务端原子执行 GET 命中才 DEL，兼容 5.x 且并发心跳下不会双写
+     */
+    private static final RedisScript<String> GETDEL_SCRIPT = new DefaultRedisScript<>(
+            "local v = redis.call('GET', KEYS[1]); if v then redis.call('DEL', KEYS[1]) end; return v",
+            String.class);
 
     private final StringRedisTemplate stringRedisTemplate;
     private final BarrierProperties barrierProperties;
@@ -83,6 +95,11 @@ public class DeviceAlarmServiceImpl extends ServiceImpl<DeviceAlarmDao, DeviceAl
             stringRedisTemplate.delete(dedupKey);
             throw e;
         }
+        //批次2 B5：OFFLINE 落库成功置"未处理标记"（无 TTL 显式生命周期）——markOnlineRecovered 据此
+        //GETDEL 门控：正常设备心跳恢复路径零空 UPDATE（心跳洪峰下 50 台 × 10s 的写放大归零）
+        if (type == AlarmType.OFFLINE) {
+            stringRedisTemplate.opsForValue().set(BarrierRedisKeys.ALARM_OPEN_PREFIX + deviceNo + ":" + type.getCode(), "1");
+        }
         //告警是"喊给人听"的：warn 级日志进 error/warn 文件，运维侧可接日志告警渠道
         log.warn("设备告警 deviceNo={} type={} content={}", deviceNo, type.getDesc(), content);
     }
@@ -124,7 +141,24 @@ public class DeviceAlarmServiceImpl extends ServiceImpl<DeviceAlarmDao, DeviceAl
     @Override
     public int markOnlineRecovered(String deviceNo) {
         //只关 OFFLINE（心跳恢复 = 离线判定反转的权威）；MOVING_STUCK/AUTO_CORRECT_FAILED
-        //需事件级证据，仍由 markRecovered 在事件路径关闭——类型集合分离，语义不混
+        //需事件级证据，仍由 markRecovered 在事件路径关闭——类型集合分离，语义不混。
+        //批次2 B5 门控：先 GETDEL 未处理标记（原子取删）——正常设备（从未 OFFLINE 告警过）心跳
+        //恢复路径零 DB 写（心跳洪峰 5rps 下不再每 10s 一次空 UPDATE）；
+        //人工 handle 后标记残留由本次 GETDEL 一次性吸收（UPDATE 条件 alarm_handled=0 兜底，幂等无害）；
+        //markRecovered（事件路径，低频）不加门控——事件到达本身即"刚变更过状态"，写放大可接受
+        String openKey = BarrierRedisKeys.ALARM_OPEN_PREFIX + deviceNo + ":" + AlarmType.OFFLINE.getCode();
+        boolean marked;
+        try {
+            //LUA 原子取删（Redis 5.0 无 GETDEL 命令，脚本兼容——见类头 GETDEL_SCRIPT 注释）
+            marked = stringRedisTemplate.execute(GETDEL_SCRIPT, Collections.singletonList(openKey)) != null;
+        } catch (RuntimeException e) {
+            //Redis 故障降级保底：按命中处理（执行 UPDATE）——宁可空写不可漏关（退化=批次1 现状行为）
+            log.warn("OFFLINE 恢复标记 GETDEL 异常，降级为直接执行关闭 UPDATE deviceNo={} cause={}", deviceNo, e.getMessage());
+            marked = true;
+        }
+        if (!marked) {
+            return 0;
+        }
         int rows = baseMapper.update(null, new LambdaUpdateWrapper<DeviceAlarmEntity>()
                 .eq(DeviceAlarmEntity::getDeviceNo, deviceNo)
                 .eq(DeviceAlarmEntity::getAlarmHandled, 0)
