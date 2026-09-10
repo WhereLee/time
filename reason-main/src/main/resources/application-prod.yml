@@ -4,9 +4,11 @@ spring:
         druid:
             driver-class-name: com.mysql.cj.jdbc.Driver
             url: jdbc:mysql://localhost:3306/reason_faster?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false
-            # 生产环境请勿使用明文：用 jasypt 加密后填写 ENC(密文)
-            username: root
-            password: root
+            # T16 凭据闭环保密：jasypt ENC() 承载（解密口令经环境变量 JASYPT_ENCRYPTOR_PASSWORD 注入，不落仓库）
+            # 注：下列 ENC 为"演示密文"（明文=root，生成方法见部署手册"Jasypt 凭据生成"）。
+            # 云部署时必须用你自己的解密口令重新生成密文（手册步骤 4）；明文凭据不进任何配置文件。
+            username: ENC(eMBSNRK2CJZ+Ov15N71LIp3wXQi3tUd8x+A8RJYAe9QOPQxyI4uA73qjkNTCFQb0)
+            password: ENC(5rO5mel0VvGKsPLurmemvv5txE9CcKpoOQ0tPmoNdUPbTeCy0VCI/Dd6zM0J18+Y)
             initial-size: 10
             max-active: 100
             min-idle: 10
@@ -68,7 +70,6 @@ knife4j:
 realmName:
 reason:
   device:
-    # 设备通道访问令牌（/device/** 由 DeviceAuthFilter 校验，须与 device-sim 侧一致）
-    access-token: sim-device-token-prod-2026
-    # 设备模拟服务地址：同机回环（云服务器本机部署）
+    # 设备通道：per-device HMAC（共享口令 access-token 已随 0.5 退役，配置随之移除——T16 幽灵配置清理）
+    # 设备模拟服务地址：同机回环（云服务器本机部署，reason-barrier-sim）
     sim-base-url: http://127.0.0.1:8300

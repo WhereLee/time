@@ -112,7 +112,8 @@ public class DeviceRecordServiceImpl extends ServiceImpl<DeviceRecordDao, Device
         }
         entity.setDeviceRemark(form.getDeviceRemark());
         entity.setDeviceCreator(userId);
-        long now = System.currentTimeMillis() / 1000;
+        //D-H 毫秒化：台账时间列全毫秒
+        long now = System.currentTimeMillis();
         entity.setDeviceCreatetime(now);
         entity.setDeviceUpdatetime(now);
         this.save(entity);
@@ -125,7 +126,7 @@ public class DeviceRecordServiceImpl extends ServiceImpl<DeviceRecordDao, Device
         //显式失败让设备侧发现；相同状态重复上报幂等无害（影响行数 1，直接覆盖）
         DeviceRecordEntity update = new DeviceRecordEntity();
         update.setDeviceState(stateCode);
-        update.setDeviceUpdatetime(System.currentTimeMillis() / 1000);
+        update.setDeviceUpdatetime(System.currentTimeMillis());
         int rows = baseMapper.update(update, new LambdaQueryWrapper<DeviceRecordEntity>()
                 .eq(DeviceRecordEntity::getDeviceNo, deviceNo));
         if (rows == 0) {
@@ -147,7 +148,7 @@ public class DeviceRecordServiceImpl extends ServiceImpl<DeviceRecordDao, Device
         update.setDeviceState(stateCode);
         update.setDeviceLastBootId(bootId);
         update.setDeviceLastEventSeq(eventSeq);
-        update.setDeviceUpdatetime(System.currentTimeMillis() / 1000);
+        update.setDeviceUpdatetime(System.currentTimeMillis());
         int rows = baseMapper.update(update, new LambdaQueryWrapper<DeviceRecordEntity>()
                 .eq(DeviceRecordEntity::getDeviceNo, deviceNo)
                 .and(w -> w.isNull(DeviceRecordEntity::getDeviceLastBootId)

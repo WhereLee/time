@@ -21,8 +21,8 @@ CREATE TABLE `device_record` (
   `device_state` tinyint NOT NULL DEFAULT '0' COMMENT '状态快照：0-未接入 1-升起 2-降下 3-动作中 4-故障（登记默认0；只允许设备事件驱动更新）',
   `device_remark` varchar(255) DEFAULT NULL COMMENT '备注',
   `device_creator` bigint DEFAULT NULL COMMENT '登记人 sys_user.user_id',
-  `device_createtime` bigint NOT NULL COMMENT '登记时间戳(秒)',
-  `device_updatetime` bigint DEFAULT NULL COMMENT '更新时间戳(秒)',
+  `device_createtime` bigint NOT NULL COMMENT '登记时间戳(毫秒, D-H)',
+  `device_updatetime` bigint DEFAULT NULL COMMENT '更新时间戳(毫秒, D-H)',
   PRIMARY KEY (`device_id`),
   UNIQUE KEY `u_device_no` (`device_no`) COMMENT '设备编号唯一',
   KEY `idx_type_state` (`device_type`,`device_state`) COMMENT '类型+状态检索'

@@ -4,6 +4,7 @@ import com.github.xiaoymin.knife4j.annotations.ApiOperationSupport;
 import com.reason.common.exception.RRException;
 import com.reason.common.utils.Result;
 import com.reason.modules.device.config.DeviceChannelAuthenticator;
+import com.reason.modules.device.config.DeviceTrafficGuard;
 import com.reason.modules.device.enums.DeviceState;
 import com.reason.modules.device.form.DeviceHeartbeatForm;
 import com.reason.modules.device.service.DeviceMonitorService;
@@ -49,6 +50,9 @@ public class DeviceHeartbeatController {
     @Autowired
     private DeviceChannelAuthenticator authenticator;
 
+    @Autowired
+    private DeviceTrafficGuard trafficGuard;
+
     /**
      * 心跳上报：刷新在线状态 + 状态自述对账（state 可空=只报活）
      */
@@ -60,6 +64,8 @@ public class DeviceHeartbeatController {
                                     @RequestBody DeviceHeartbeatForm form) {
         //批次1：心跳高频，正常路径 debug（排障时开 DEBUG 可看报文级到达记录，平时不刷屏）
         log.debug("[心跳入口] deviceNo={} state={}", form.getDeviceNo(), form.getState());
+        //批次5 上行限流：per-device 令牌桶（先限流后验签——防未认证洪峰打满 HMAC 计算；心跳不受全局闸）
+        trafficGuard.assertHeartbeatAllowed(form.getDeviceNo());
         //0.5 设备通道鉴权：per-device HMAC（与事件通道同一凭证体系）
         authenticator.authenticateHeartbeat(form.getDeviceNo(), form.getState(), signature);
 

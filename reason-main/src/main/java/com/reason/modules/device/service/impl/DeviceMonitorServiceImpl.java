@@ -43,7 +43,7 @@ public class DeviceMonitorServiceImpl implements DeviceMonitorService {
     private final DeviceAlarmService deviceAlarmService;
     private final DeviceCommandLogService commandLogService;
 
-    /** 启动时刻（0.8：启动宽限期内不做离线判定——平台重启期间 TTL 自然过期，防全量误报） */
+    /** 启动时刻毫秒值（0.8：启动宽限期内不做离线判定——平台重启期间 TTL 自然过期，防全量误报） */
     private long startupTime;
 
     public DeviceMonitorServiceImpl(StringRedisTemplate stringRedisTemplate,
@@ -62,7 +62,7 @@ public class DeviceMonitorServiceImpl implements DeviceMonitorService {
 
     @PostConstruct
     public void init() {
-        this.startupTime = System.currentTimeMillis() / 1000;
+        this.startupTime = System.currentTimeMillis();
         log.info("设备监控就绪：启动宽限期 {}s（期间不做离线判定）", barrierProperties.getOnlineStartupGraceSeconds());
     }
 
@@ -85,9 +85,10 @@ public class DeviceMonitorServiceImpl implements DeviceMonitorService {
             //时序让路守卫：台账刚被事件通道更新过（grace 窗口内）说明事件通道活跃，
             //本次心跳自述采样于更早时刻，不一致大概率是两通道时序差——本轮跳过，
             //下轮心跳若仍不一致（真漂移不会自愈）再校正，避免陈旧心跳把台账回退
-            long nowSec = System.currentTimeMillis() / 1000;
+            //D-H 毫秒化：台账时间列为毫秒，grace 判据 = now - grace*1000
+            long nowMs = System.currentTimeMillis();
             boolean recordFresh = record.getDeviceUpdatetime() != null
-                    && nowSec - record.getDeviceUpdatetime() < barrierProperties.getReconcileGraceSeconds();
+                    && nowMs - record.getDeviceUpdatetime() < barrierProperties.getReconcileGraceSeconds() * 1000L;
             if (recordFresh) {
                 log.debug("心跳对账让路：台账 {}s 内刚被事件通道更新 deviceNo={} 台账={} 自述={}",
                         barrierProperties.getReconcileGraceSeconds(), deviceNo, record.getDeviceState(), stateCode);
@@ -123,7 +124,7 @@ public class DeviceMonitorServiceImpl implements DeviceMonitorService {
 
         //5. 刷新在线 key（覆盖式 SET + TTL：每次心跳续命，停止心跳后 TTL 自然过期 = 离线）
         stringRedisTemplate.opsForValue().set(BarrierRedisKeys.ONLINE_PREFIX + deviceNo,
-                String.valueOf(System.currentTimeMillis() / 1000),
+                String.valueOf(System.currentTimeMillis()),
                 barrierProperties.getHeartbeatTimeoutSeconds(), TimeUnit.SECONDS);
     }
 
@@ -161,10 +162,11 @@ public class DeviceMonitorServiceImpl implements DeviceMonitorService {
     public void scanOffline() {
         //0.8 启动宽限：平台重启期间心跳 TTL 自然过期，恢复后立即扫描会全量误报 OFFLINE——
         //宽限（>重启耗时+TTL）后再开始离线判定
-        long nowSec = System.currentTimeMillis() / 1000;
-        if (nowSec - startupTime < barrierProperties.getOnlineStartupGraceSeconds()) {
+        //D-H 毫秒化：启动宽限比较改为毫秒（展示仍折算为秒）
+        long nowMs = System.currentTimeMillis();
+        if (nowMs - startupTime < barrierProperties.getOnlineStartupGraceSeconds() * 1000L) {
             log.debug("启动宽限期内跳过离线扫描（剩余 {}s）",
-                    barrierProperties.getOnlineStartupGraceSeconds() - (nowSec - startupTime));
+                    (barrierProperties.getOnlineStartupGraceSeconds() * 1000L - (nowMs - startupTime)) / 1000);
             return;
         }
         //只扫"接入过"的设备（状态≠未接入）：从未上线的设备没有心跳是常态，不算离线异常

@@ -486,7 +486,7 @@ INSERT INTO `sys_dictionary` VALUES (2, 'iplist', 'black_list', NULL, 'IP黑名�
 -- ----------------------------
 -- Records of sys_param
 -- ----------------------------
-INSERT INTO `sys_param` VALUES (3, '口令最大尝试次数', 'attempt_limit', '0', '口令最大尝试次数，超过则限时锁定账号  0-不做限制 默认不做限制', unix_timestamp(now()), unix_timestamp(now()), 0);
+INSERT INTO `sys_param` VALUES (3, '口令最大尝试次数', 'attempt_limit', '5', '口令最大尝试次数，超过则限时锁定账号  0-不做限制  默认5次（T19 认证前置）', unix_timestamp(now()), unix_timestamp(now()), 0);
 INSERT INTO `sys_param` VALUES (4, '账号限时锁定时间', 'lock_time', '5', '账号限时锁定时间（单位：分钟） 默认5分钟', unix_timestamp(now()), unix_timestamp(now()), 0);
 INSERT INTO `sys_param` VALUES (5, '口令定期变更', 'change_force', '2', '口令定期变更  1-强制变更 2-提醒变更  默认不强制', unix_timestamp(now()), unix_timestamp(now()), 0);
 INSERT INTO `sys_param` VALUES (6, '口令变更时限', 'change_limit', '30', '口令变更时限（单位：天） 默认 30天', unix_timestamp(now()), unix_timestamp(now()), 0);

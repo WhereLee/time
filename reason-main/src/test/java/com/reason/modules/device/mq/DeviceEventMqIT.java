@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
@@ -58,6 +59,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * command-timeout-seconds=3600（禁 MonitorTask 超时对账动 IT 流水）。</p>
  */
 @SpringBootTest
+@ActiveProfiles("test")   // T16：主配置已删默认 profile，IT 显式声明 test（数据源由 Testcontainers DynamicPropertySource 覆盖）
 @Testcontainers
 @Tag("mq")
 @DisplayName("设备事件MQ通道集成测试(阶段2)")
@@ -152,7 +154,8 @@ class DeviceEventMqIT {
         try (Connection conn = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              Statement st = conn.createStatement()) {
-            long now = System.currentTimeMillis() / 1000;
+            //D-H 毫秒化：device_record/device_command_log 时间列已为毫秒
+            long now = System.currentTimeMillis();
             st.executeUpdate("INSERT INTO device_record (device_no, device_name, device_type, device_state,"
                     + " device_secret, device_createtime, device_updatetime) VALUES ('" + DEVICE_NO
                     + "', 'IT一号杆', 1, 0, '" + SECRET + "', " + now + ", " + now + ")");

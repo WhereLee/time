@@ -123,7 +123,8 @@ public class DeviceCommandLogServiceImpl extends ServiceImpl<DeviceCommandLogDao
         entity.setTriggerType(trigger.getCode());
         entity.setCommandStatus(CommandStatus.PENDING.getCode());
         entity.setRetryCount(0);
-        long now = System.currentTimeMillis() / 1000;
+        //D-H 毫秒化：流水时间列全毫秒（与 grace/超时判据同单位）
+        long now = System.currentTimeMillis();
         entity.setCommandCreatetime(now);
         entity.setCommandUpdatetime(now);
         this.save(entity);
@@ -146,7 +147,7 @@ public class DeviceCommandLogServiceImpl extends ServiceImpl<DeviceCommandLogDao
                 .eq(DeviceCommandLogEntity::getCommandAction, action)
                 .eq(DeviceCommandLogEntity::getCommandStatus, CommandStatus.PENDING.getCode())
                 .set(DeviceCommandLogEntity::getCommandStatus, CommandStatus.ARRIVED.getCode())
-                .set(DeviceCommandLogEntity::getCommandUpdatetime, System.currentTimeMillis() / 1000));
+                .set(DeviceCommandLogEntity::getCommandUpdatetime, System.currentTimeMillis()));
         if (arrived) {
             log.info("指令按 seq 精确闭环 deviceNo={} action={} seq={}", deviceNo, action, seq);
         } else {
@@ -163,7 +164,7 @@ public class DeviceCommandLogServiceImpl extends ServiceImpl<DeviceCommandLogDao
                 .eq(DeviceCommandLogEntity::getDeviceNo, deviceNo)
                 .eq(DeviceCommandLogEntity::getCommandStatus, CommandStatus.PENDING.getCode())
                 .set(DeviceCommandLogEntity::getCommandStatus, CommandStatus.EXEC_FAILED.getCode())
-                .set(DeviceCommandLogEntity::getCommandUpdatetime, System.currentTimeMillis() / 1000));
+                .set(DeviceCommandLogEntity::getCommandUpdatetime, System.currentTimeMillis()));
         if (updated) {
             log.warn("设备故障中断在途指令 deviceNo={}", deviceNo);
         }
@@ -177,7 +178,7 @@ public class DeviceCommandLogServiceImpl extends ServiceImpl<DeviceCommandLogDao
                 .eq(DeviceCommandLogEntity::getCommandSeq, seq)
                 .eq(DeviceCommandLogEntity::getCommandStatus, CommandStatus.PENDING.getCode())
                 .set(DeviceCommandLogEntity::getCommandStatus, CommandStatus.EXEC_FAILED.getCode())
-                .set(DeviceCommandLogEntity::getCommandUpdatetime, System.currentTimeMillis() / 1000));
+                .set(DeviceCommandLogEntity::getCommandUpdatetime, System.currentTimeMillis()));
         if (updated) {
             log.warn("设备故障按 seq 归属中断指令 deviceNo={} seq={}", deviceNo, seq);
         }
@@ -186,7 +187,8 @@ public class DeviceCommandLogServiceImpl extends ServiceImpl<DeviceCommandLogDao
 
     @Override
     public List<DeviceCommandLogEntity> findTimeoutPending(int timeoutSeconds) {
-        long deadline = System.currentTimeMillis() / 1000 - timeoutSeconds;
+        //D-H 毫秒化：超时阈=now - timeout*1000（列已为毫秒）
+        long deadline = System.currentTimeMillis() - timeoutSeconds * 1000L;
         return this.list(new LambdaQueryWrapper<DeviceCommandLogEntity>()
                 .eq(DeviceCommandLogEntity::getCommandStatus, CommandStatus.PENDING.getCode())
                 .lt(DeviceCommandLogEntity::getCommandCreatetime, deadline));
@@ -199,7 +201,7 @@ public class DeviceCommandLogServiceImpl extends ServiceImpl<DeviceCommandLogDao
                 .eq(DeviceCommandLogEntity::getCommandId, commandId)
                 .eq(DeviceCommandLogEntity::getCommandStatus, CommandStatus.PENDING.getCode())
                 .setSql("retry_count = retry_count + 1")
-                .set(DeviceCommandLogEntity::getCommandUpdatetime, System.currentTimeMillis() / 1000));
+                .set(DeviceCommandLogEntity::getCommandUpdatetime, System.currentTimeMillis()));
     }
 
     @Override
@@ -238,6 +240,6 @@ public class DeviceCommandLogServiceImpl extends ServiceImpl<DeviceCommandLogDao
                 .eq(DeviceCommandLogEntity::getCommandId, commandId)
                 .eq(DeviceCommandLogEntity::getCommandStatus, from.getCode())
                 .set(DeviceCommandLogEntity::getCommandStatus, to.getCode())
-                .set(DeviceCommandLogEntity::getCommandUpdatetime, System.currentTimeMillis() / 1000));
+                .set(DeviceCommandLogEntity::getCommandUpdatetime, System.currentTimeMillis()));
     }
 }

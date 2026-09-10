@@ -4,6 +4,7 @@ import com.github.xiaoymin.knife4j.annotations.ApiOperationSupport;
 import com.reason.common.exception.RRException;
 import com.reason.common.utils.Result;
 import com.reason.modules.device.config.DeviceChannelAuthenticator;
+import com.reason.modules.device.config.DeviceTrafficGuard;
 import com.reason.modules.device.enums.DeviceState;
 import com.reason.modules.device.form.DeviceEventForm;
 import com.reason.modules.device.service.DeviceEventService;
@@ -50,6 +51,9 @@ public class DeviceEventController {
     @Autowired
     private DeviceChannelAuthenticator authenticator;
 
+    @Autowired
+    private DeviceTrafficGuard trafficGuard;
+
     /**
      * 设备状态上报（协议 v2）：序守卫更新台账 + 证据驱动销账流水
      */
@@ -62,6 +66,8 @@ public class DeviceEventController {
         //批次1 报文级留痕：事件稀疏且每条有业务意义，info 级字段化（grep deviceNo 可拉出该设备全部上报）
         log.info("[事件入口] deviceNo={} state={} commandSeq={} bootId={} eventSeq={}",
                 form.getDeviceNo(), form.getState(), form.getCommandSeq(), form.getBootId(), form.getEventSeq());
+        //批次5 上行限流：per-device 桶 + 全局水位闸（超限拒绝事件=非关键上报；心跳为生命线不受全局闸）
+        trafficGuard.assertEventAllowed(form.getDeviceNo());
         //0.5 设备通道鉴权：per-device HMAC（共享口令已退役）——伪造/重放由密钥+序守卫双层拦截
         authenticator.authenticateEvent(form.getDeviceNo(), form.getState(), form.getCommandSeq(),
                 form.getBootId(), form.getEventSeq(), signature);

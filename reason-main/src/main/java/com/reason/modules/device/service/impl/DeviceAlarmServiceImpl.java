@@ -91,11 +91,12 @@ public class DeviceAlarmServiceImpl extends ServiceImpl<DeviceAlarmDao, DeviceAl
 
         //DB 时间窗查重兜底（0.8）：Redis 丢失后 SETNX 恒成功会刷屏——落库前查最近同类未处理告警，
         //存在则回滚占位跳过（告警频率低，一次 SELECT 可接受；Redis 正常时此处几乎永不命中）
-        long now = System.currentTimeMillis() / 1000;
+        //D-H 毫秒化：告警时间列全毫秒
+        long now = System.currentTimeMillis();
         Long dup = baseMapper.selectCount(new LambdaQueryWrapper<DeviceAlarmEntity>()
                 .eq(DeviceAlarmEntity::getDeviceNo, deviceNo)
                 .eq(DeviceAlarmEntity::getAlarmType, type.getCode())
-                .gt(DeviceAlarmEntity::getAlarmCreatetime, now - barrierProperties.getAlarmDedupSeconds()));
+                .gt(DeviceAlarmEntity::getAlarmCreatetime, now - barrierProperties.getAlarmDedupSeconds() * 1000L));
         if (dup != null && dup > 0) {
             stringRedisTemplate.delete(dedupKey);
             log.debug("告警 DB 时间窗查重兜底命中，跳过 deviceNo={} type={}（Redis 去重键丢失场景）", deviceNo, type);
@@ -163,7 +164,7 @@ public class DeviceAlarmServiceImpl extends ServiceImpl<DeviceAlarmDao, DeviceAl
                 .eq(DeviceAlarmEntity::getAlarmHandled, 0)
                 .set(DeviceAlarmEntity::getAlarmHandled, 1)
                 .set(DeviceAlarmEntity::getAlarmHandler, userId)
-                .set(DeviceAlarmEntity::getAlarmHandledTime, System.currentTimeMillis() / 1000));
+                .set(DeviceAlarmEntity::getAlarmHandledTime, System.currentTimeMillis()));
         if (!updated) {
             throw new RRException("告警不存在或已处理: " + alarmId);
         }
@@ -182,7 +183,7 @@ public class DeviceAlarmServiceImpl extends ServiceImpl<DeviceAlarmDao, DeviceAl
                         AlarmType.MOVING_STUCK.getCode(),
                         AlarmType.AUTO_CORRECT_FAILED.getCode())
                 .set(DeviceAlarmEntity::getAlarmHandled, 1)
-                .set(DeviceAlarmEntity::getAlarmHandledTime, System.currentTimeMillis() / 1000));
+                .set(DeviceAlarmEntity::getAlarmHandledTime, System.currentTimeMillis()));
         if (rows > 0) {
             log.info("设备状态恢复，自动关闭状态类告警 {} 条 deviceNo={}", rows, deviceNo);
         }
@@ -215,7 +216,7 @@ public class DeviceAlarmServiceImpl extends ServiceImpl<DeviceAlarmDao, DeviceAl
                 .eq(DeviceAlarmEntity::getAlarmHandled, 0)
                 .eq(DeviceAlarmEntity::getAlarmType, AlarmType.OFFLINE.getCode())
                 .set(DeviceAlarmEntity::getAlarmHandled, 1)
-                .set(DeviceAlarmEntity::getAlarmHandledTime, System.currentTimeMillis() / 1000));
+                .set(DeviceAlarmEntity::getAlarmHandledTime, System.currentTimeMillis()));
         if (rows > 0) {
             log.info("心跳恢复，自动关闭离线告警 {} 条 deviceNo={}", rows, deviceNo);
         }
@@ -231,7 +232,7 @@ public class DeviceAlarmServiceImpl extends ServiceImpl<DeviceAlarmDao, DeviceAl
                 .eq(DeviceAlarmEntity::getAlarmType, type.getCode())
                 .eq(DeviceAlarmEntity::getAlarmHandled, 0)
                 .set(DeviceAlarmEntity::getAlarmHandled, 1)
-                .set(DeviceAlarmEntity::getAlarmHandledTime, System.currentTimeMillis() / 1000));
+                .set(DeviceAlarmEntity::getAlarmHandledTime, System.currentTimeMillis()));
         if (rows > 0) {
             log.info("告警自动关闭 {} 条 deviceNo={} type={}（恢复路径）", rows, deviceNo, type);
         }

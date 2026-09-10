@@ -30,7 +30,7 @@ SET @c2 := (SELECT COUNT(*) FROM information_schema.COLUMNS
             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'device_alarm'
               AND COLUMN_NAME = 'alarm_handled_time');
 SET @ddl2 := IF(@c2 = 0,
-  'ALTER TABLE `device_alarm` ADD COLUMN `alarm_handled_time` bigint DEFAULT NULL COMMENT ''处理时间戳(秒)'' AFTER `alarm_handler`',
+  'ALTER TABLE `device_alarm` ADD COLUMN `alarm_handled_time` bigint DEFAULT NULL COMMENT ''处理时间戳(毫秒, D-H)'' AFTER `alarm_handler`',
   'SELECT 1');
 PREPARE stmt2 FROM @ddl2; EXECUTE stmt2; DEALLOCATE PREPARE stmt2;
 

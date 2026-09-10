@@ -73,7 +73,7 @@ class DeviceMonitorServiceImplTest {
         DeviceRecordEntity record = new DeviceRecordEntity();
         record.setDeviceNo("BARRIER-E-01");
         record.setDeviceState(state);
-        record.setDeviceUpdatetime(System.currentTimeMillis() / 1000 - 60); //远离 grace 窗
+        record.setDeviceUpdatetime(System.currentTimeMillis() - 60_000); //远离 grace 窗（D-H：毫秒列）
         return record;
     }
 

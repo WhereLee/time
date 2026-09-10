@@ -103,7 +103,8 @@ public class BarrierMonitorTask implements ITask {
      * 设备卡在动作中（到位事件丢失但设备也没再报）——显式告警交人工（只喊不改，T6）
      */
     private void scanStuckMoving() {
-        long threshold = System.currentTimeMillis() / 1000 - properties.getMovingStuckSeconds();
+        //D-H 毫秒化：台账时间列为毫秒——卡死判据 = now - 阈值*1000
+        long threshold = System.currentTimeMillis() - properties.getMovingStuckSeconds() * 1000L;
         List<DeviceRecordEntity> stuck = recordDao.selectList(new LambdaQueryWrapper<DeviceRecordEntity>()
                 .eq(DeviceRecordEntity::getDeviceState, DeviceState.MOVING.getCode())
                 .lt(DeviceRecordEntity::getDeviceUpdatetime, threshold));

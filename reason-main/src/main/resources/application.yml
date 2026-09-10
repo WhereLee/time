@@ -16,9 +16,10 @@ server:
     context-path: /api
 
 spring:
-  # 环境 dev|test|prod
-  profiles:
-    active: dev
+  # 环境 dev|test|prod —— T16：无默认值，必须显式指定（防止"漏配 profile 静默用错环境"）
+  #   本地/演示：--spring.profiles.active=dev（或环境变量 SPRING_PROFILES_ACTIVE=dev）
+  #   云部署：systemd 已显式 prod（见部署手册 + reason-main.service）
+  # 不带 profile 启动：因缺少数据源配置而 fail-fast（预期行为，不是故障）
   # jackson时间格式化
   jackson:
     time-zone: GMT+8
@@ -77,9 +78,22 @@ mybatis-plus:
 reason:
   redis:
     open: true
+  cors:
+    # 跨域白名单（T16：精确匹配 Origin；默认空=仅同源——未登记源一律拒绝，含 401 响应回显）
+    # 需跨域接入前端时在此登记，例：['http://localhost:9527']
+    allowed-origins: []
   security:
     # 强改密码检查豁免 URI（登录后仍需访问的必需接口；@Value 注入按逗号拆分）
     change-password-exempt-uris: /api/sys/menu/nav, /api/sys/user/info, /api/sys/logout, /api/sys/user/password
+    # 登录防护（T19）：可信代理清单（逗号分隔）——仅这些地址来的请求才解析 X-Forwarded-For；
+    # 默认空=忽略一切代理头（本地直连/无前置代理部署）；有 nginx 时登记其地址（如 127.0.0.1）
+    trusted-proxies: ""
+    # 登录防护（T19）：IP 维度失败闸——窗口内失败达上限则该 IP 拒绝登录（0=关闭）；账号维度策略见 sys_param(attempt_limit/lock_time)
+    login-ip-max: 20
+    login-ip-window-seconds: 600
+  audit:
+    # 批次5 审计降级：查询类（GET）是否写入 sys_log（false=不写——列表翻页不再写放大；需查询审计时打开）
+    query-log-enabled: false
   # APP模块，是通过jwt认证的，如果要使用APP模块，则需要修改【加密秘钥】
   jwt:
     # 加密秘钥
@@ -91,6 +105,14 @@ reason:
     # 设备模拟服务地址（本地双进程联调；接真实设备时此处即设备协议网关地址）
     # 注：设备通道鉴权已升级为 per-device HMAC（0.5），共享口令 X-Device-Token 已退役
     sim-base-url: http://127.0.0.1:8300
+    # 上行入口限流（批次5）：Redis 令牌桶——per-device 防单设备洪峰；全局水位闸防平台过载
+    # （全局超限拒绝事件=非关键上报；心跳为判活生命线不受全局闸）
+    traffic:
+      enabled: true
+      device-rps: 5
+      device-burst: 10
+      global-rps: 100
+      global-burst: 200
     # MQ 事件消费（阶段2：事件走 RocketMQ 与 HTTP 双写并行——D6；心跳留 HTTP 判活——D3）
     mq:
       # 消费开关（false=consumer 不启动，回滚纯 HTTP 形态）
@@ -129,6 +151,8 @@ reason:
 
 jasypt:
   encryptor:
+    # T16 闭环：ENC() 解密口令由环境变量 JASYPT_ENCRYPTOR_PASSWORD 注入（jasypt-spring-boot 内置支持），
+    # 仓库与配置文件零明文；密文生成/部署流程见《云服务器部署手册》
     algorithm: PBEWITHHMACSHA512ANDAES_256
     key-obtention-iterations: 1000
     pool-size: 1

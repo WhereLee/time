@@ -1,6 +1,6 @@
 package com.reason.modules.sys.service.impl;
 
-import com.alibaba.fastjson2.JSONObject;
+import com.reason.common.exception.RRException;
 import com.reason.common.utils.PasswordCodec;
 import com.reason.modules.sys.dao.SysRoleDao;
 import com.reason.modules.sys.dao.SysUserDao;
@@ -8,6 +8,7 @@ import com.reason.modules.sys.entity.SysDicIplistEntity;
 import com.reason.modules.sys.entity.SysLoginEntity;
 import com.reason.modules.sys.entity.SysUserEntity;
 import com.reason.modules.sys.form.SysLoginForm;
+import com.reason.modules.sys.security.LoginAttemptGuard;
 import com.reason.modules.sys.service.SysDictionaryService;
 import com.reason.modules.sys.service.SysUserTokenService;
 import org.junit.jupiter.api.DisplayName;
@@ -19,7 +20,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -27,7 +27,6 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -36,9 +35,10 @@ import static org.mockito.Mockito.when;
 /**
  * 登录核心链路单测（关键分支）
  *
- * <p>取舍说明：login 内聚的「尝试次数锁定」逻辑抽取为 LoginAttemptGuard 的重构
- * 已登记 document/roadmap/login-attempt-guard-extraction.md，触发时执行；
- * 本类只测关键分支，mock 量偏大是已知取舍。</p>
+ * <p>批次5 T19：尝试次数的计数/锁定逻辑已从 login 抽取为 LoginAttemptGuard
+ * （document/roadmap/login-attempt-guard-extraction.md 登记的抽取已执行）——
+ * 本类聚焦"service 编排正确性"：防护预检被调用、失败结局到文案的映射、成功后清理；
+ * guard 自身的双维度计数/锁定行为由 LoginAttemptGuardTest 覆盖。</p>
  */
 @DisplayName("登录核心链路")
 @ExtendWith(MockitoExtension.class)
@@ -48,12 +48,12 @@ class SysUserServiceImplLoginTest {
     private static final String PASSWORD = "admin123";
     private static final String LEGACY_SALT = "CYiKIzx4410U9yaBPBHE";
     private static final String LEGACY_HASH = "06bf8058a83e7c94b345e6eab9964956ea13ce904e7b5025e333127c24f94794";
-    private static final String REDIS_KEY = "user_" + LOGINNAME;
+    private static final String LOGIN_IP = "127.0.0.1";
 
     @Mock
     private com.reason.common.utils.ParamUtils paramUtils;
     @Mock
-    private com.reason.common.utils.RedisUtils redisUtils;
+    private LoginAttemptGuard loginAttemptGuard;
     @Mock
     private SysUserDao sysUserDao;
     @Mock
@@ -68,7 +68,7 @@ class SysUserServiceImplLoginTest {
     private SysUserServiceImpl service;
 
     @Captor
-    private ArgumentCaptor<com.reason.modules.sys.entity.SysUserEntity> userCaptor;
+    private ArgumentCaptor<SysUserEntity> userCaptor;
 
     private SysLoginForm loginForm() {
         SysLoginForm form = new SysLoginForm();
@@ -105,37 +105,38 @@ class SysUserServiceImplLoginTest {
         when(sysRoleDao.queryRoleIdByUserId(2L)).thenReturn(List.of(2L));
         when(sysUserTokenService.createToken(2L)).thenReturn(new SysLoginEntity());
         //spy 上的 updateById 必须用 doReturn（否则会执行真实方法打到 mapper）
-        doReturn(true).when(service).updateById(any(com.reason.modules.sys.entity.SysUserEntity.class));
+        doReturn(true).when(service).updateById(any(SysUserEntity.class));
     }
 
     @Test
-    @DisplayName("BCrypt 用户登录成功：发放 token，不触发渐进升级")
+    @DisplayName("BCrypt 用户登录成功：发放 token + 清理失败痕迹")
     void BCrypt用户_登录成功_不触发渐进升级() {
         when(paramUtils.getAttemptLimtAndLockTime())
-                .thenReturn(Map.of("attemptLimit", 0, "lockTime", 5));
+                .thenReturn(Map.of("attemptLimit", 5, "lockTime", 5));
         SysUserEntity bcryptUser = userMock(PasswordCodec.encode(PASSWORD), "any");
         when(sysUserDao.getUserByLoginname(LOGINNAME)).thenReturn(bcryptUser);
         stubCommon();
 
-        SysLoginEntity result = service.login(loginForm(), "127.0.0.1");
+        SysLoginEntity result = service.login(loginForm(), LOGIN_IP);
 
         assertThat(result).isNotNull();
         assertThat(result.getUserId()).isEqualTo(2L);
         //仅「更新登录时间」一次 updateById，无重哈希
-        verify(service, times(1)).updateById(any(com.reason.modules.sys.entity.SysUserEntity.class));
-        verify(redisUtils).deleteKey(REDIS_KEY);
+        verify(service, times(1)).updateById(any(SysUserEntity.class));
+        //T19：成功路径清理失败痕迹（账号×IP 组合键/锁键 + IP 计数键）
+        verify(loginAttemptGuard).onSuccess(LOGINNAME, LOGIN_IP);
     }
 
     @Test
     @DisplayName("遗留 SHA-256 用户登录成功：密码被重哈希为 BCrypt（渐进迁移核心行为）")
     void 遗留用户_登录成功_密码升级为BCrypt() {
         when(paramUtils.getAttemptLimtAndLockTime())
-                .thenReturn(Map.of("attemptLimit", 0, "lockTime", 5));
+                .thenReturn(Map.of("attemptLimit", 5, "lockTime", 5));
         SysUserEntity legacyUser = userMock(LEGACY_HASH, LEGACY_SALT);
         when(sysUserDao.getUserByLoginname(LOGINNAME)).thenReturn(legacyUser);
         stubCommon();
 
-        service.login(loginForm(), "127.0.0.1");
+        service.login(loginForm(), LOGIN_IP);
 
         //两次 updateById：登录时间更新 + 渐进升级；升级实体必须携带 BCrypt 哈希
         verify(service, times(2)).updateById(userCaptor.capture());
@@ -144,49 +145,56 @@ class SysUserServiceImplLoginTest {
     }
 
     @Test
-    @DisplayName("密码错误达到尝试上限：账号限时锁定并写入 Redis")
-    void 密码错误_达到尝试上限_账号锁定() {
+    @DisplayName("密码错误且 guard 判定触发账号锁定：抛锁定文案（不透露账号是否存在）")
+    void 密码错误_guard判定账号锁定_抛锁定文案() {
         when(paramUtils.getAttemptLimtAndLockTime())
                 .thenReturn(Map.of("attemptLimit", 3, "lockTime", 5));
         when(sysDictionaryService.getIpList()).thenReturn(new SysDicIplistEntity());
-        JSONObject existing = new JSONObject();
-        existing.put("times", 2);
-        existing.put("lock", false);
-        when(redisUtils.hasKey(REDIS_KEY)).thenReturn(true);
-        when(redisUtils.getKeyValue(REDIS_KEY)).thenReturn(existing);
+        when(loginAttemptGuard.onFailure(LOGINNAME, LOGIN_IP))
+                .thenReturn(LoginAttemptGuard.FailureOutcome.LOCKED_BY_ACCOUNT);
         SysUserEntity errorUser = errorPathUserMock();
         when(sysUserDao.getUserByLoginname(LOGINNAME)).thenReturn(errorUser);
 
-        assertThatThrownBy(() -> service.login(loginForm(), "127.0.0.1"))
-                .isInstanceOf(com.reason.common.exception.RRException.class)
-                .hasMessageContaining("锁定");
+        assertThatThrownBy(() -> service.login(loginForm(), LOGIN_IP))
+                .isInstanceOf(RRException.class)
+                .hasMessageContaining("账号已限时锁定");
 
-        verify(redisUtils).deleteKey(REDIS_KEY);
-        verify(redisUtils).setKeyValue(eq(REDIS_KEY), any(), eq(300L));
+        verify(loginAttemptGuard).onFailure(LOGINNAME, LOGIN_IP);
     }
 
     @Test
-    @DisplayName("密码错误未达上限：错误次数累加并刷新过期时间")
-    void 密码错误_未达上限_次数累加() {
+    @DisplayName("密码错误且 guard 判定触发 IP 闸：抛网络限速文案")
+    void 密码错误_guard判定IP闸_抛网络限速文案() {
         when(paramUtils.getAttemptLimtAndLockTime())
                 .thenReturn(Map.of("attemptLimit", 3, "lockTime", 5));
         when(sysDictionaryService.getIpList()).thenReturn(new SysDicIplistEntity());
-        JSONObject existing = new JSONObject();
-        existing.put("times", 0);
-        existing.put("lock", false);
-
-        when(redisUtils.hasKey(REDIS_KEY)).thenReturn(true);
-        when(redisUtils.getKeyValue(REDIS_KEY)).thenReturn(existing);
+        when(loginAttemptGuard.onFailure(LOGINNAME, LOGIN_IP))
+                .thenReturn(LoginAttemptGuard.FailureOutcome.LOCKED_BY_IP);
         SysUserEntity errorUser = errorPathUserMock();
         when(sysUserDao.getUserByLoginname(LOGINNAME)).thenReturn(errorUser);
 
-        assertThatThrownBy(() -> service.login(loginForm(), "127.0.0.1"))
-                .isInstanceOf(com.reason.common.exception.RRException.class)
+        assertThatThrownBy(() -> service.login(loginForm(), LOGIN_IP))
+                .isInstanceOf(RRException.class)
+                .hasMessageContaining("登录失败次数过多");
+
+        verify(loginAttemptGuard).onFailure(LOGINNAME, LOGIN_IP);
+    }
+
+    @Test
+    @DisplayName("密码错误未触发任何锁定：抛通用错误文案")
+    void 密码错误_未触发锁定_抛通用文案() {
+        when(paramUtils.getAttemptLimtAndLockTime())
+                .thenReturn(Map.of("attemptLimit", 3, "lockTime", 5));
+        when(sysDictionaryService.getIpList()).thenReturn(new SysDicIplistEntity());
+        when(loginAttemptGuard.onFailure(LOGINNAME, LOGIN_IP))
+                .thenReturn(LoginAttemptGuard.FailureOutcome.NORMAL);
+        SysUserEntity errorUser = errorPathUserMock();
+        when(sysUserDao.getUserByLoginname(LOGINNAME)).thenReturn(errorUser);
+
+        assertThatThrownBy(() -> service.login(loginForm(), LOGIN_IP))
+                .isInstanceOf(RRException.class)
                 .hasMessageContaining("账号或密码错误");
 
-        ArgumentCaptor<Object> valueCaptor = ArgumentCaptor.forClass(Object.class);
-        verify(redisUtils).setKeyValue(eq(REDIS_KEY), valueCaptor.capture(), any());
-        JSONObject saved = (JSONObject) valueCaptor.getValue();
-        assertThat(saved.getInteger("times")).isEqualTo(1);
+        verify(loginAttemptGuard).onFailure(LOGINNAME, LOGIN_IP);
     }
 }

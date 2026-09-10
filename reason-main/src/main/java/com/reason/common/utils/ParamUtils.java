@@ -56,7 +56,8 @@ public class ParamUtils {
         try {
             map.put("attemptLimit", Integer.valueOf(StringUtils.replaceBlank(attemptLimit)));
         } catch (Exception e) {
-            map.put("attemptLimit", 0);
+            //T19 fail-secure：参数缺失/异常时按最严默认兜底（原为 0=不限，等于无防护）
+            map.put("attemptLimit", 5);
         }
 
         try {

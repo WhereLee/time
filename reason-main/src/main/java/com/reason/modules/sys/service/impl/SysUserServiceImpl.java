@@ -1,6 +1,5 @@
 package com.reason.modules.sys.service.impl;
 
-import com.alibaba.fastjson2.JSONObject;
 import com.reason.common.annotation.DataFilter;
 import com.reason.common.exception.RRException;
 import com.reason.common.utils.*;
@@ -17,6 +16,7 @@ import com.reason.modules.sys.form.SysUserForm;
 import com.reason.modules.sys.service.SysDictionaryService;
 import com.reason.modules.sys.service.SysUserRoleService;
 import com.reason.modules.sys.service.SysUserTokenService;
+import com.reason.modules.sys.security.LoginAttemptGuard;
 import com.reason.modules.sys.vo.SysPasswordVO;
 import com.reason.modules.sys.vo.SysUserVO;
 import lombok.extern.slf4j.Slf4j;
@@ -43,7 +43,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserDao, SysUserEntity> i
     @Autowired
     private ParamUtils paramUtils;
     @Autowired
-    private RedisUtils redisUtils;
+    private LoginAttemptGuard loginAttemptGuard;
     @Autowired
     private SysUserDao sysUserDao;
     @Autowired
@@ -103,60 +103,33 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserDao, SysUserEntity> i
 
         //当前时间戳
         Long timestamp = System.currentTimeMillis()/1000;
-        //离当日结束（23:59:59）剩余时间
-        Long timeRemaining = DateUtils.getEndTime(timestamp)-timestamp;
         //参数
         String loginname = form.getLoginname();
         String password = form.getPassword();
-        //Redis Key
-        String userKey = "user_"+loginname;
         //参数校验
         Assert.isBlank(loginname,"登录名不能为空");
         Assert.isBlank(password,"密码不能为空");
 
-        //1.口令最大尝试次数校验  0-不做限制
+        //1.登录防护预检（T19：账号×IP 组合锁 + IP 维度闸；计数与锁定状态由 LoginAttemptGuard 维护）
+        loginAttemptGuard.assertNotBlocked(loginname, ip);
+        //口令最大尝试次数/锁定时间（仅用于失败文案展示；策略值仍来自 sys_param）
         Map<String, Integer> map = paramUtils.getAttemptLimtAndLockTime();
-        //口令最大尝试次数，超过则限时锁定账号  0-不做限制  默认不做限制
         Integer attemptLimt = map.get("attemptLimit");
-        //账号限时锁定时间（单位：分钟） 默认5分钟
         Integer lockTime = map.get("lockTime");
-        JSONObject userObj = null;
-        //口令错误次数
-        Integer pwdTimes = 0;
-        if (attemptLimt != 0) {
-            userObj = new JSONObject();
-            if (redisUtils.hasKey(userKey)) {
-                userObj = (JSONObject) redisUtils.getKeyValue(userKey);
-                pwdTimes = userObj.getInteger("times");
-                Boolean lock = userObj.getBoolean("lock");
-                if (lock != null && lock)
-                    throw new RRException("账号已限时锁定，请稍后再尝试");
-            }
-        }
 
         //2.用户信息
         SysUserEntity user = sysUserDao.getUserByLoginname(loginname);
 
         //2.1 账号不存在、密码错误（密码校验支持 BCrypt 与遗留 SHA-256 两种格式）
         if(user == null || !PasswordCodec.matches(password, user.getUserPassword(), user.getUserSalt())) {
-            //口令最大尝试次数处理 错误次数+1
-            if (attemptLimt != 0) {
-                pwdTimes ++;
-                userObj.put("times", pwdTimes);
-                if (pwdTimes >= attemptLimt) {//锁定
-                    userObj.put("lock", true);
-                    //更新Redis数据
-                    redisUtils.deleteKey(userKey);
-                    redisUtils.setKeyValue(userKey, userObj, lockTime*60L);
-
-                    throw new RRException("账号或密码连续错误"+attemptLimt+"次，账号已限时锁定，"+lockTime+"分钟后解锁");
-                } else {
-                    //更新Redis数据
-                    redisUtils.deleteKey(userKey);
-                    redisUtils.setKeyValue(userKey, userObj, timeRemaining);
-                }
+            //口令错误处理（T19 双维度计数：账号×IP 组合 + IP 维度；达阈值由 guard 返回结局）
+            LoginAttemptGuard.FailureOutcome outcome = loginAttemptGuard.onFailure(loginname, ip);
+            if (outcome == LoginAttemptGuard.FailureOutcome.LOCKED_BY_ACCOUNT) {
+                throw new RRException("账号或密码连续错误"+attemptLimt+"次，账号已限时锁定，"+lockTime+"分钟后解锁");
             }
-
+            if (outcome == LoginAttemptGuard.FailureOutcome.LOCKED_BY_IP) {
+                throw new RRException("当前网络登录失败次数过多，请稍后再试");
+            }
             throw new RRException("账号或密码错误");
         }
 
@@ -164,8 +137,8 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserDao, SysUserEntity> i
         if(!user.open())
             throw new RRException("账号已锁定,请联系管理员");
 
-        //登录成功 删除Key
-        redisUtils.deleteKey(userKey);
+        //登录成功：清理失败痕迹（T19：账号×IP 组合计数键/锁键 + IP 维度计数键）
+        loginAttemptGuard.onSuccess(loginname, ip);
 
         //渐进升级：遗留 SHA-256 密码在登录成功后重哈希为 BCrypt（下次登录起走 BCrypt 校验）
         if (PasswordCodec.isLegacy(user.getUserPassword())) {

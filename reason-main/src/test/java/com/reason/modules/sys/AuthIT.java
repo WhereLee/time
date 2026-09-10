@@ -13,6 +13,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
@@ -38,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * document/pitfalls/testresttemplate-contextpath-auto-prefix.md）。</p>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ActiveProfiles("test")   // T16：主配置已删默认 profile，IT 显式声明 test（数据源由 Testcontainers DynamicPropertySource 覆盖）
 @Testcontainers
 @DisplayName("认证链路集成测试")
 class AuthIT {

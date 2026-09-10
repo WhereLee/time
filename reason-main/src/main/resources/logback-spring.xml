@@ -143,4 +143,13 @@
         </root>
     </springProfile>
 
+    <!-- 无匹配 profile（T16 fail-fast 场景，批次5 S8 实测暴露修复）：仅控制台——
+         原配置下无 profile 时没有任何 root/appender-ref，全部 appender "not referenced"，
+         启动失败的真实原因（如数据源缺失）被日志系统静默吞掉，操作者只见 exit code 1 -->
+    <springProfile name="!dev &amp; !test &amp; !prod">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE" />
+        </root>
+    </springProfile>
+
 </configuration>

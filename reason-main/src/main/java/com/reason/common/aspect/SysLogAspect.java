@@ -15,8 +15,8 @@ import com.reason.common.annotation.SysLog;
 import com.reason.common.exception.RRException;
 import com.reason.common.utils.StringUtils;
 import com.reason.modules.sys.entity.SysLogEntity;
+import com.reason.common.utils.ClientIpResolver;
 import com.reason.common.utils.HttpContextUtils;
-import com.reason.common.utils.IPUtils;
 import com.reason.modules.sys.entity.SysUserEntity;
 import com.reason.modules.sys.security.LoginUserHolder;
 import com.reason.modules.sys.service.SysLogService;
@@ -28,6 +28,7 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.NoHandlerFoundException;
@@ -47,6 +48,14 @@ import java.lang.reflect.Method;
 public class SysLogAspect {
 	@Autowired
 	private SysLogService sysLogService;
+
+	/** T19：客户端 IP 解析（可信代理末跳；非可信来源忽略代理头） */
+	@Autowired
+	private ClientIpResolver clientIpResolver;
+
+	/** 批次5 审计降级：查询类（GET）是否写入 sys_log（默认关——翻页不再写放大；需查询审计时 yml 打开） */
+	@Value("${reason.audit.query-log-enabled:false}")
+	private boolean queryLogEnabled;
 	
 	@Pointcut("@annotation(com.reason.common.annotation.SysLog)")
 	public void logPointCut() {}
@@ -109,6 +118,15 @@ public class SysLogAspect {
 	 */
 	private void saveSysLog(ProceedingJoinPoint joinPoint, SysLogEntity sysLog) {
 		try {
+			//获取request
+			HttpServletRequest request = HttpContextUtils.getHttpServletRequest();
+
+			//批次5 审计降级：GET=查询语义——列表翻页/详情刷新不再写 sys_log（默认关；需审计时 yml 打开）
+			if (!queryLogEnabled && "GET".equalsIgnoreCase(request.getMethod())) {
+				log.debug("查询审计已降级（reason.audit.query-log-enabled=false）：{}", request.getRequestURI());
+				return;
+			}
+
 			MethodSignature signature = (MethodSignature) joinPoint.getSignature();
 			Method method = signature.getMethod();
 
@@ -132,10 +150,8 @@ public class SysLogAspect {
 				sysLog.setLogParams(params);
 			} catch (Exception e) {}
 
-			//获取request
-			HttpServletRequest request = HttpContextUtils.getHttpServletRequest();
-			//设置IP地址 TODO
-			sysLog.setLogIp(IPUtils.getIpAddr(request));
+			//设置IP地址（T19：ClientIpResolver——可信代理末跳，非可信来源忽略代理头）
+			sysLog.setLogIp(clientIpResolver.resolve(request));
 			sysLog.setLogUrl(request.getRequestURI());
 			sysLog.setLogBrowser(request.getHeader("User-Agent"));
 

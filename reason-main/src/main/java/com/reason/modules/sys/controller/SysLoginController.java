@@ -10,8 +10,8 @@ package com.reason.modules.sys.controller;
 
 import com.github.xiaoymin.knife4j.annotations.ApiOperationSupport;
 import com.reason.common.annotation.SysLog;
+import com.reason.common.utils.ClientIpResolver;
 import com.reason.common.utils.HttpContextUtils;
-import com.reason.common.utils.IPUtils;
 import com.reason.common.utils.Result;
 import com.reason.modules.sys.entity.SysLoginEntity;
 import com.reason.modules.sys.form.SysLoginForm;
@@ -43,6 +43,8 @@ public class SysLoginController extends AbstractController {
 	private SysUserService sysUserService;
 	@Autowired
 	private SysCaptchaService sysCaptchaService;
+	@Autowired
+	private ClientIpResolver clientIpResolver;
 
 	/**
 	 * 验证码-没有调用
@@ -86,7 +88,8 @@ public class SysLoginController extends AbstractController {
 
 		//获取request
 		HttpServletRequest request = HttpContextUtils.getHttpServletRequest();
-		String ip = IPUtils.getIpAddr(request);
+		//T19：客户端 IP 解析（可信代理末跳；非可信来源忽略一切代理头）
+		String ip = clientIpResolver.resolve(request);
 
 		SysLoginEntity login = sysUserService.login(form, ip);
 		return Result.ok(login, login.getMsg());

@@ -26,8 +26,8 @@ CREATE TABLE `device_command_log` (
   `trigger_type` tinyint NOT NULL DEFAULT '1' COMMENT '触发源：1-管理端手动 2-自动规则 3-超时重试',
   `command_status` tinyint NOT NULL DEFAULT '0' COMMENT '状态：0-已下发待到位 1-已到位 2-下发失败 3-重试超限转故障 4-执行失败(设备故障) 5-被更新指令取代(0.2代际裁决)',
   `retry_count` int NOT NULL DEFAULT '0' COMMENT '已重试次数（超限阈值见 reason.barrier.max-retry）',
-  `command_createtime` bigint NOT NULL COMMENT '下发时间戳(秒)',
-  `command_updatetime` bigint DEFAULT NULL COMMENT '更新时间戳(秒)',
+  `command_createtime` bigint NOT NULL COMMENT '下发时间戳(毫秒, D-H)',
+  `command_updatetime` bigint DEFAULT NULL COMMENT '更新时间戳(毫秒, D-H)',
   PRIMARY KEY (`command_id`),
   UNIQUE KEY `u_device_seq` (`device_no`,`command_seq`) COMMENT '设备内 seq 唯一（幂等硬保证）',
   KEY `idx_status_time` (`command_status`,`command_createtime`) COMMENT '超时扫描：待到位+时间'
@@ -41,7 +41,7 @@ CREATE TABLE `device_alarm` (
   `alarm_type` tinyint NOT NULL COMMENT '类型：1-指令重试超限 2-设备离线 3-状态对账不一致 4-设备故障上报 5-自动校正连续失败(0.3熔断) 6-动作卡死未到位(0.4巡检)',
   `alarm_content` varchar(512) DEFAULT NULL COMMENT '告警内容（人可读）',
   `alarm_handled` tinyint NOT NULL DEFAULT '0' COMMENT '处理状态：0-未处理 1-已处理',
-  `alarm_createtime` bigint NOT NULL COMMENT '告警时间戳(秒)',
+  `alarm_createtime` bigint NOT NULL COMMENT '告警时间戳(毫秒, D-H)',
   PRIMARY KEY (`alarm_id`),
   KEY `idx_device_handled` (`device_no`,`alarm_handled`) COMMENT '按设备查未处理告警',
   KEY `idx_type_time` (`alarm_type`,`alarm_createtime`) COMMENT '按类型+时间检索'
