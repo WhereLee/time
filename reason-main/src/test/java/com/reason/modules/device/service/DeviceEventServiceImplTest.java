@@ -1,5 +1,6 @@
 package com.reason.modules.device.service;
 
+import com.reason.common.exception.RRException;
 import com.reason.modules.device.enums.AlarmType;
 import com.reason.modules.device.form.DeviceEventForm;
 import org.junit.jupiter.api.DisplayName;
@@ -9,10 +10,12 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -97,5 +100,31 @@ class DeviceEventServiceImplTest {
         verify(commandLogService).markExecFailedBySeq("BARRIER-E-01", 3);
         verify(commandLogService, never()).markExecFailed(anyString());
         verify(deviceAlarmService).raise(eq("BARRIER-E-01"), eq(AlarmType.DEVICE_FAULT), anyString());
+    }
+
+    @Test
+    @DisplayName("缺 eventSeq（批次8）：协议垃圾 -> RRException（HTTP 400/MQ 毒消息），不再拆箱 NPE 出 500")
+    void 缺eventSeq_协议拒绝() {
+        DeviceEventForm form = event(1, 7L, "boot-1", 7);
+        form.setEventSeq(null);
+        assertThrows(RRException.class, () -> eventService.handleStateEvent(form));
+        verifyNoInteractions(deviceRecordService, commandLogService, deviceAlarmService);
+    }
+
+    @Test
+    @DisplayName("缺 bootId（批次8）：协议垃圾 -> RRException，不进台账更新")
+    void 空bootId_协议拒绝() {
+        DeviceEventForm form = event(1, 7L, "", 7L);
+        assertThrows(RRException.class, () -> eventService.handleStateEvent(form));
+        verifyNoInteractions(deviceRecordService, commandLogService, deviceAlarmService);
+    }
+
+    @Test
+    @DisplayName("缺 state（批次8）：协议垃圾 -> RRException，不进台账更新")
+    void 缺state_协议拒绝() {
+        DeviceEventForm form = event(1, 7L, "boot-1", 7L);
+        form.setState(null);
+        assertThrows(RRException.class, () -> eventService.handleStateEvent(form));
+        verifyNoInteractions(deviceRecordService, commandLogService, deviceAlarmService);
     }
 }

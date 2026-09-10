@@ -1,5 +1,6 @@
 package com.reason.modules.device.service.impl;
 
+import com.reason.common.exception.RRException;
 import com.reason.modules.device.enums.AlarmType;
 import com.reason.modules.device.enums.DeviceState;
 import com.reason.modules.device.form.DeviceEventForm;
@@ -35,6 +36,15 @@ public class DeviceEventServiceImpl implements DeviceEventService {
 
     @Override
     public void handleStateEvent(DeviceEventForm form) {
+        //协议 v2 §3.1 必填校验（批次8：HTTP 入口曾漏检——eventSeq 空会 Long 拆箱 NPE 出 500，
+        //而契约 §5 要求协议垃圾 400；MQ 侧已有同款校验，这里单点收口双入口同获益：
+        //HTTP 走 RRException -> 400，MQ 走 RRException -> 毒消息 ACK 丢弃）
+        if (form.getDeviceNo() == null || form.getDeviceNo().isEmpty()
+                || form.getState() == null
+                || form.getBootId() == null || form.getBootId().isEmpty()
+                || form.getEventSeq() == null) {
+            throw new RRException("协议v2事件缺必填字段(deviceNo/state/bootId/eventSeq)");
+        }
         //状态码合法性校验（未知码=协议错，快速失败）
         int stateCode = DeviceState.fromCode(form.getState()).getCode();
         String deviceNo = form.getDeviceNo();
