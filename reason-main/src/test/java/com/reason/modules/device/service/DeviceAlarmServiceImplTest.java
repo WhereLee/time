@@ -188,4 +188,39 @@ class DeviceAlarmServiceImplTest {
         verify(stringRedisTemplate, never()).delete(anyString());
         verify(stringRedisTemplate, never()).execute(any(RedisScript.class), anyList());
     }
+
+    @Test
+    @DisplayName("raise（批次4 D-F）：限速命中（窗口内同类超上限）-> 只记日志不落库 + 回滚去重占位")
+    void raise_限速跳过不落库() {
+        stubRedisOps();
+        stubDedupSeconds();
+        when(valueOperations.setIfAbsent(anyString(), anyString(), eq(300L), eq(TimeUnit.SECONDS)))
+                .thenReturn(true);
+        when(deviceAlarmDao.selectCount(any())).thenReturn(0L);
+        //限速脚本（4 个 varargs：now/window/max/member）返回 1=已超上限
+        when(stringRedisTemplate.execute(any(RedisScript.class), anyList(),
+                anyString(), anyString(), anyString(), anyString())).thenReturn(1L);
+
+        alarmService.raise(DEVICE_NO, AlarmType.BATCH_OFFLINE, "批量离线 50 台");
+
+        verify(deviceAlarmDao, never()).insert(any(DeviceAlarmEntity.class));
+        //回滚占位（限速与去重两机制正交，避免双重封印超预期）
+        verify(stringRedisTemplate).delete(anyString());
+    }
+
+    @Test
+    @DisplayName("raise（批次4 D-F）：限速未命中（脚本返回 0）-> 正常落库")
+    void raise_限速放行落库() {
+        stubRedisOps();
+        stubDedupSeconds();
+        when(valueOperations.setIfAbsent(anyString(), anyString(), eq(300L), eq(TimeUnit.SECONDS)))
+                .thenReturn(true);
+        when(deviceAlarmDao.selectCount(any())).thenReturn(0L);
+        when(stringRedisTemplate.execute(any(RedisScript.class), anyList(),
+                anyString(), anyString(), anyString(), anyString())).thenReturn(0L);
+
+        alarmService.raise(DEVICE_NO, AlarmType.OFFLINE, "心跳超时");
+
+        verify(deviceAlarmDao).insert(any(DeviceAlarmEntity.class));
+    }
 }

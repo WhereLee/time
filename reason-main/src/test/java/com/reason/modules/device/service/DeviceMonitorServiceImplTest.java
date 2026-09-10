@@ -1,12 +1,16 @@
 package com.reason.modules.device.service;
 
 import com.reason.common.exception.RRException;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.reason.modules.device.config.BarrierProperties;
 import com.reason.modules.device.dao.DeviceRecordDao;
 import com.reason.modules.device.entity.DeviceRecordEntity;
 import com.reason.modules.device.enums.AlarmType;
 import com.reason.modules.device.enums.DeviceState;
 import com.reason.modules.device.service.impl.DeviceMonitorServiceImpl;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,6 +41,16 @@ import static org.mockito.Mockito.when;
 @DisplayName("设备心跳编排(阶段1补漏)")
 @ExtendWith(MockitoExtension.class)
 class DeviceMonitorServiceImplTest {
+
+    /**
+     * 纯单测无 MyBatis 装配：Lambda 包装器依赖 TableInfo 缓存（见
+     * document/pitfalls/mybatis-plus-lambda-cache-unit-test.md——覆盖实现内引用到的全部实体）
+     */
+    @BeforeAll
+    static void initMybatisPlusLambdaCache() {
+        MapperBuilderAssistant assistant = new MapperBuilderAssistant(new MybatisConfiguration(), "");
+        TableInfoHelper.initTableInfo(assistant, DeviceRecordEntity.class);
+    }
 
     @Mock
     private StringRedisTemplate stringRedisTemplate;
@@ -125,6 +139,8 @@ class DeviceMonitorServiceImplTest {
     @DisplayName("scanOffline（批次2 B6）：pipeline 批量判定一次往返——仅离线集 raise，在线零误报")
     void scanOffline_pipeline批量判定() {
         when(barrierProperties.getOnlineStartupGraceSeconds()).thenReturn(90);
+        //批次4：单测 mock 的 int 默认 0 会把任何离线数判为批量态——显式给阈值
+        when(barrierProperties.getOfflineBatchThreshold()).thenReturn(3);
         //两台接入过设备（未接入过滤是查询 SQL 职责，单测不模拟）：E-01 心跳 key 过期（离线）、W-02 在线
         DeviceRecordEntity offline = record(DeviceState.UP.getCode());
         offline.setDeviceNo("BARRIER-E-01");
@@ -163,5 +179,49 @@ class DeviceMonitorServiceImplTest {
         monitorService.scanOffline();
         verify(recordDao, never()).selectList(any());
         verify(stringRedisTemplate, never()).executePipelined(any(RedisCallback.class));
+    }
+
+    @Test
+    @DisplayName("scanOffline（批次4 D-F）：离线数>=阈值 -> 合并 1 条 BATCH_OFFLINE，不逐台 raise、不触关闭")
+    void scanOffline_批量合并() {
+        when(barrierProperties.getOnlineStartupGraceSeconds()).thenReturn(90);
+        when(barrierProperties.getOfflineBatchThreshold()).thenReturn(3);
+        DeviceRecordEntity d1 = record(DeviceState.UP.getCode());
+        d1.setDeviceNo("BARRIER-B-01");
+        DeviceRecordEntity d2 = record(DeviceState.UP.getCode());
+        d2.setDeviceNo("BARRIER-B-02");
+        DeviceRecordEntity d3 = record(DeviceState.UP.getCode());
+        d3.setDeviceNo("BARRIER-B-03");
+        when(recordDao.selectList(any())).thenReturn(List.of(d1, d2, d3));
+        when(stringRedisTemplate.executePipelined(any(RedisCallback.class)))
+                .thenReturn(List.of(Boolean.FALSE, Boolean.FALSE, Boolean.FALSE));
+
+        monitorService.scanOffline();
+
+        //合并一条（哨兵号 + 批量类型）；无逐台 OFFLINE、无批量态关闭（本轮仍是批量态）
+        verify(deviceAlarmService).raise(eq(DeviceAlarmService.BATCH_DEVICE_NO), eq(AlarmType.BATCH_OFFLINE), anyString());
+        verify(deviceAlarmService, never()).raise(anyString(), eq(AlarmType.OFFLINE), anyString());
+        verify(deviceAlarmService, never()).closeUnhandledAlarm(anyString(), any());
+    }
+
+    @Test
+    @DisplayName("scanOffline（批次4 D-F）：离线数回落低于阈值 -> 逐台 raise + 关闭批量告警（谁开谁关）")
+    void scanOffline_回落逐台并关批量() {
+        when(barrierProperties.getOnlineStartupGraceSeconds()).thenReturn(90);
+        when(barrierProperties.getOfflineBatchThreshold()).thenReturn(3);
+        when(barrierProperties.getHeartbeatTimeoutSeconds()).thenReturn(30);
+        DeviceRecordEntity d1 = record(DeviceState.UP.getCode());
+        d1.setDeviceNo("BARRIER-B-01");
+        DeviceRecordEntity d2 = record(DeviceState.UP.getCode());
+        d2.setDeviceNo("BARRIER-B-02");
+        when(recordDao.selectList(any())).thenReturn(List.of(d1, d2));
+        when(stringRedisTemplate.executePipelined(any(RedisCallback.class)))
+                .thenReturn(List.of(Boolean.FALSE, Boolean.FALSE));
+
+        monitorService.scanOffline();
+
+        verify(deviceAlarmService).closeUnhandledAlarm(eq(DeviceAlarmService.BATCH_DEVICE_NO), eq(AlarmType.BATCH_OFFLINE));
+        verify(deviceAlarmService).raise(eq("BARRIER-B-01"), eq(AlarmType.OFFLINE), anyString());
+        verify(deviceAlarmService).raise(eq("BARRIER-B-02"), eq(AlarmType.OFFLINE), anyString());
     }
 }

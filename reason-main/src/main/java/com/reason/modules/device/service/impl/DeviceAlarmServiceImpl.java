@@ -32,6 +32,10 @@ import java.util.concurrent.TimeUnit;
  * 占位成功才落库——持续异常（如设备一直离线）在窗口内只喊一次，不刷屏；
  * 窗口过期后若异常仍在，再喊一次（"还在坏"的周期性提醒）。
  * 用 DB 查重（select count）会有查-插竞态且热路径多一次查询，SETNX 原子且 O(1)。</p>
+ *
+ * <p>风暴限速（批次4 D-F）：去重之上的第二道闸——per-type 全局滑动窗口（ZSET，LUA 原子），
+ * "真落库尝试"超上限只记日志不落库（跨设备刷屏场景：去重管不了不同设备，限速兜底）；
+ * 实时批量场景由离线扫描的合并告警（BATCH_OFFLINE）先行吸收。</p>
  */
 @Slf4j
 @Service("deviceAlarmService")
@@ -46,6 +50,23 @@ public class DeviceAlarmServiceImpl extends ServiceImpl<DeviceAlarmDao, DeviceAl
     private static final RedisScript<String> GETDEL_SCRIPT = new DefaultRedisScript<>(
             "local v = redis.call('GET', KEYS[1]); if v then redis.call('DEL', KEYS[1]) end; return v",
             String.class);
+
+    /**
+     * 告警限速滑动窗口脚本（批次4 D-F）：清理滑出成员 -> 统计窗口内数量 -> 未达上限则记入并放行（0），
+     * 已达上限返回 1（限速：不落库也不占位）。多命令必须原子，LUA 单请求往返
+     */
+    private static final RedisScript<Long> RATE_LIMIT_SCRIPT = new DefaultRedisScript<>(
+            "local z = KEYS[1] "
+                    + "local now = tonumber(ARGV[1]) "
+                    + "local win = tonumber(ARGV[2]) "
+                    + "local max = tonumber(ARGV[3]) "
+                    + "redis.call('ZREMRANGEBYSCORE', z, 0, now - win) "
+                    + "local cnt = redis.call('ZCARD', z) "
+                    + "if cnt >= max then return 1 end "
+                    + "redis.call('ZADD', z, now, ARGV[4]) "
+                    + "redis.call('PEXPIRE', z, win * 2) "
+                    + "return 0",
+            Long.class);
 
     private final StringRedisTemplate stringRedisTemplate;
     private final BarrierProperties barrierProperties;
@@ -81,6 +102,17 @@ public class DeviceAlarmServiceImpl extends ServiceImpl<DeviceAlarmDao, DeviceAl
             return;
         }
 
+        //批次4 D-F 限速闸（去重之后）：只有"真落库尝试"才计数——窗口内同类超上限只记日志（降级为日志的
+        //告警仍可见，不静默）；同时回滚去重占位，保持"限速/去重"两机制正交（否则占位会把限速窗口
+        //封满到去重窗口，双重封印超预期）
+        if (isRateLimited(type)) {
+            stringRedisTemplate.delete(dedupKey);
+            log.warn("告警限速跳过(只记日志不落库) deviceNo={} type={}（窗口 {}s 内同类告警超 {} 条）content={}",
+                    deviceNo, type, barrierProperties.getAlarmRateWindowSeconds(),
+                    barrierProperties.getAlarmRateMaxPerWindow(), content);
+            return;
+        }
+
         DeviceAlarmEntity alarm = new DeviceAlarmEntity();
         alarm.setDeviceNo(deviceNo);
         alarm.setAlarmType(type.getCode());
@@ -102,6 +134,25 @@ public class DeviceAlarmServiceImpl extends ServiceImpl<DeviceAlarmDao, DeviceAl
         }
         //告警是"喊给人听"的：warn 级日志进 error/warn 文件，运维侧可接日志告警渠道
         log.warn("设备告警 deviceNo={} type={} content={}", deviceNo, type.getDesc(), content);
+    }
+
+    /**
+     * 限速判定（批次4 D-F）：per-type 全局滑动窗口。true=超限（只记日志不落库）。
+     * Redis 异常降级放行——告警是"喊给人听"：宁可多喊不可漏喊（与恢复路径"宁可空写不可漏关"对偶）
+     */
+    private boolean isRateLimited(AlarmType type) {
+        try {
+            Long limited = stringRedisTemplate.execute(RATE_LIMIT_SCRIPT,
+                    Collections.singletonList(BarrierRedisKeys.ALARM_RATE_PREFIX + type.getCode()),
+                    String.valueOf(System.currentTimeMillis()),
+                    String.valueOf(barrierProperties.getAlarmRateWindowSeconds() * 1000L),
+                    String.valueOf(barrierProperties.getAlarmRateMaxPerWindow()),
+                    String.valueOf(System.nanoTime()));
+            return limited != null && limited == 1L;
+        } catch (RuntimeException e) {
+            log.warn("告警限速判定异常，降级放行 type={} cause={}", type, e.getMessage());
+            return false;
+        }
     }
 
     @Override
@@ -169,6 +220,29 @@ public class DeviceAlarmServiceImpl extends ServiceImpl<DeviceAlarmDao, DeviceAl
             log.info("心跳恢复，自动关闭离线告警 {} 条 deviceNo={}", rows, deviceNo);
         }
         return rows;
+    }
+
+    @Override
+    public int closeUnhandledAlarm(String deviceNo, AlarmType type) {
+        //批次4：产生方恢复后关闭自己的未处理告警（谁开谁关）。不做门控：调用频率低（30s/1min
+        //扫描轮），UPDATE 带 handled=0 条件空写无害（索引扫描 0 行）
+        int rows = baseMapper.update(null, new LambdaUpdateWrapper<DeviceAlarmEntity>()
+                .eq(DeviceAlarmEntity::getDeviceNo, deviceNo)
+                .eq(DeviceAlarmEntity::getAlarmType, type.getCode())
+                .eq(DeviceAlarmEntity::getAlarmHandled, 0)
+                .set(DeviceAlarmEntity::getAlarmHandled, 1)
+                .set(DeviceAlarmEntity::getAlarmHandledTime, System.currentTimeMillis() / 1000));
+        if (rows > 0) {
+            log.info("告警自动关闭 {} 条 deviceNo={} type={}（恢复路径）", rows, deviceNo, type);
+        }
+        return rows;
+    }
+
+    @Override
+    public long countUnhandled() {
+        //批次4 指标：未处理告警数（处置面观测）
+        return this.count(new LambdaQueryWrapper<DeviceAlarmEntity>()
+                .eq(DeviceAlarmEntity::getAlarmHandled, 0));
     }
 
     @Override

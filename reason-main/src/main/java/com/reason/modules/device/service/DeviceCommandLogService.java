@@ -86,4 +86,9 @@ public interface DeviceCommandLogService extends IService<DeviceCommandLogEntity
      * 管理端分页查询
      */
     PageUtils queryPage(DeviceCommandLogForm form);
+
+    /**
+     * 统计待到位流水数（批次4 指标：PENDING 积压观测——通道故障的第一指标）
+     */
+    long countPending();
 }

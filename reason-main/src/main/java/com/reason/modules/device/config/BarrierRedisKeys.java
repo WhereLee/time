@@ -31,6 +31,17 @@ public final class BarrierRedisKeys {
     /** 指令序号 key（INCR 递增，无 TTL：设备内 seq 永久单调，跨重启/多实例一致） */
     public static final String CMD_SEQ_PREFIX = "barrier:cmd-seq:";
 
+    /** 告警限速滑动窗口（批次4 D-F，ZSET：score=毫秒时间戳——per-type 全局，超限只记日志不落库；
+     * 告警触发才写入（非热路径），成本可忽略） */
+    public static final String ALARM_RATE_PREFIX = "barrier:alarm-rate:";
+
+    /** 任务最后成功时间不再用 Redis——权威台账=schedule_job_log（log_state=0 的 MAX 时间），
+     * 看护与 metrics 直查（批次4：不改动通用 Quartz 框架 ScheduleJob，数据不双写不漂移） */
+
+    /** 对账连续异常计数（批次4：AutoTask 单台异常时 INCR、成功时清零，TTL 1h——
+     * 连续超阈值升级显式告警，补批次3 Redis 事故暴露的静默缺口） */
+    public static final String RECONCILE_FAIL_PREFIX = "barrier:reconcile-fail:";
+
     private BarrierRedisKeys() {
     }
 }

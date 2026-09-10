@@ -21,7 +21,13 @@ public enum AlarmType {
     /** 自动校正连续失败：AutoTask 熔断（0.3：平台观测连续未闭环，停自动避免无限轰杆） */
     AUTO_CORRECT_FAILED(5, "自动校正连续失败"),
     /** 动作卡死未到位：台账卡 MOVING 超阈值（0.4：静默故障显式化，交人工处置） */
-    MOVING_STUCK(6, "动作卡死未到位");
+    MOVING_STUCK(6, "动作卡死未到位"),
+    /** 批量离线：单轮扫描离线设备数超阈值（批次4 D-F：合并一条替代 N 条——风暴不刷屏） */
+    BATCH_OFFLINE(7, "批量离线"),
+    /** 任务停摆：看护发现任务连续错过触发（批次4：静默停摆可被发现） */
+    JOB_STALLED(8, "任务停摆"),
+    /** 对账持续异常：单台设备连续多轮对账处理异常（批次4：静默异常升级为显式告警） */
+    RECONCILE_ERROR(9, "对账持续异常");
 
     private final int code;
     private final String desc;

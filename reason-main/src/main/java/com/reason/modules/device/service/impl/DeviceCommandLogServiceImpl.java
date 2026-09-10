@@ -20,8 +20,11 @@ import com.reason.modules.device.service.DeviceCommandLogService;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -41,19 +44,32 @@ public class DeviceCommandLogServiceImpl extends ServiceImpl<DeviceCommandLogDao
 
     private final StringRedisTemplate stringRedisTemplate;
 
+    /**
+     * 启动对齐脚本（批次4 升级）：GET 现值比对 DB MAX，仅当 key 缺失或现值更小时 SET——
+     * LUA 原子（多实例并发启动不会交错覆盖），返回 1=已校正 / 0=无需动
+     */
+    private static final RedisScript<Long> ALIGN_SEQ_SCRIPT = new DefaultRedisScript<>(
+            "local cur = redis.call('GET', KEYS[1]) "
+                    + "if not cur or tonumber(cur) < tonumber(ARGV[1]) then "
+                    + "redis.call('SET', KEYS[1], ARGV[1]) "
+                    + "return 1 end "
+                    + "return 0",
+            Long.class);
+
     public DeviceCommandLogServiceImpl(StringRedisTemplate stringRedisTemplate) {
         this.stringRedisTemplate = stringRedisTemplate;
     }
 
     /**
-     * 启动播种：Redis 数据丢失（FLUSHDB/无持久化重启）后 INCR 从 1 重来，
+     * 启动播种/对齐：Redis 数据丢失（FLUSHDB/无持久化重启）后 INCR 从 1 重来，
      * 新 seq 会撞 device_command_log 的历史行唯一索引 u_device_seq——
-     * 把每台设备的 seq 播种为 DB 历史最大值（setIfAbsent：Redis 健在则不覆盖，
-     * 丢了才播种），下次 INCR 从 max+1 继续，单调性跨 Redis 数据丢失仍成立。
+     * 把每台设备的 seq 对齐为 max(Redis 现值, DB 历史最大值)：健在且领先则不动，
+     * key 缺失或落后则校正（旧 RDB 快照回退——批次3 实测事故：手动启动 Redis 加载旧 dump，
+     * seq 计数器回退而 DB MAX 更高，对账每轮 50 台撞唯一索引静默跳过），
+     * 单调性跨 Redis 数据丢失/回退均成立。
      *
-     * <p>边界：仅处理 key 缺失（全量丢失），不处理 key 落后（旧 RDB 快照部分回退，
-     * 需 GET+比对+SET 取较大者，边缘场景此处不扩展）；播种失败不阻断启动
-     * （尽力恢复而非启动强依赖，失败时首次下发撞唯一索引仍有显式报错兜底）。</p>
+     * <p>边界：仅启动时对齐（运行时回退的可见性由对账连续异常升级告警 RECONCILE_ERROR 覆盖）；
+     * 对齐失败不阻断启动（尽力恢复而非启动强依赖，失败时下发撞唯一索引仍有显式报错兜底）。</p>
      */
     @PostConstruct
     public void seedSeqFromDb() {
@@ -65,16 +81,19 @@ public class DeviceCommandLogServiceImpl extends ServiceImpl<DeviceCommandLogDao
                 Object deviceNo = row.get("device_no");
                 Object maxSeq = row.get("max_seq");
                 if (deviceNo != null && maxSeq != null) {
-                    Boolean seeded = stringRedisTemplate.opsForValue().setIfAbsent(
-                            BarrierRedisKeys.CMD_SEQ_PREFIX + deviceNo, String.valueOf(maxSeq));
-                    if (Boolean.TRUE.equals(seeded)) {
-                        log.info("指令序号播种 deviceNo={} seq={}(DB 历史最大值，Redis 数据丢失恢复)", deviceNo, maxSeq);
+                    //对齐取大（LUA 原子）：DB MAX 更大才 SET，Redis 现值领先则保留
+                    Long aligned = stringRedisTemplate.execute(ALIGN_SEQ_SCRIPT,
+                            Collections.singletonList(BarrierRedisKeys.CMD_SEQ_PREFIX + deviceNo),
+                            String.valueOf(maxSeq));
+                    if (aligned != null && aligned == 1L) {
+                        log.info("指令序号对齐 deviceNo={} seq={}(DB 历史最大值；Redis 缺失或落后已校正)",
+                                deviceNo, maxSeq);
                     }
                 }
             }
         } catch (Exception e) {
-            //播种是尽力恢复不是启动强依赖：表未建/DB 抖动都不应拖垮整个应用上下文
-            log.error("指令序号播种失败（不阻断启动；Redis 数据丢失场景下首次下发可能撞唯一索引）", e);
+            //对齐是尽力恢复不是启动强依赖：表未建/DB 抖动都不应拖垮整个应用上下文
+            log.error("指令序号对齐失败（不阻断启动；Redis 数据丢失/回退场景下首次下发可能撞唯一索引）", e);
         }
     }
 
@@ -86,6 +105,13 @@ public class DeviceCommandLogServiceImpl extends ServiceImpl<DeviceCommandLogDao
             throw new RRException("指令序号生成失败(Redis 不可用): " + deviceNo);
         }
         return seq;
+    }
+
+    @Override
+    public long countPending() {
+        //批次4 指标：待到位流水数（积压观测——通道故障的第一指标）
+        return this.count(new LambdaQueryWrapper<DeviceCommandLogEntity>()
+                .eq(DeviceCommandLogEntity::getCommandStatus, CommandStatus.PENDING.getCode()));
     }
 
     @Override

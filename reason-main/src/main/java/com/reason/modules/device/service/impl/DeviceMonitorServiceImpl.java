@@ -19,6 +19,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -132,6 +133,31 @@ public class DeviceMonitorServiceImpl implements DeviceMonitorService {
     }
 
     @Override
+    public int countOnline() {
+        //批次4 指标：与 scanOffline 同一"接入过"口径 + pipeline 批量 EXISTS（50 台一轮往返）
+        List<DeviceRecordEntity> records = recordDao.selectList(new LambdaQueryWrapper<DeviceRecordEntity>()
+                .ne(DeviceRecordEntity::getDeviceState, DeviceState.NOT_CONNECTED.getCode()));
+        if (records.isEmpty()) {
+            return 0;
+        }
+        List<byte[]> keys = records.stream()
+                .map(r -> (BarrierRedisKeys.ONLINE_PREFIX + r.getDeviceNo()).getBytes(StandardCharsets.UTF_8))
+                .collect(Collectors.toList());
+        List<Object> results = stringRedisTemplate.executePipelined(
+                (RedisCallback<Object>) conn -> {
+                    keys.forEach(conn::exists);
+                    return null;
+                });
+        int online = 0;
+        for (Object r : results) {
+            if (Boolean.TRUE.equals(r)) {
+                online++;
+            }
+        }
+        return online;
+    }
+
+    @Override
     public void scanOffline() {
         //0.8 启动宽限：平台重启期间心跳 TTL 自然过期，恢复后立即扫描会全量误报 OFFLINE——
         //宽限（>重启耗时+TTL）后再开始离线判定
@@ -158,11 +184,31 @@ public class DeviceMonitorServiceImpl implements DeviceMonitorService {
                     keys.forEach(conn::exists);
                     return null;
                 });
+        //批次4 D-F：先收集本轮离线集合，再按批量口径决策
+        List<String> offlineNos = new ArrayList<>();
         for (int i = 0; i < records.size(); i++) {
             if (!Boolean.TRUE.equals(results.get(i))) {
-                deviceAlarmService.raise(records.get(i).getDeviceNo(), AlarmType.OFFLINE,
-                        "心跳超时(>" + barrierProperties.getHeartbeatTimeoutSeconds() + "s)未收到，判定离线");
+                offlineNos.add(records.get(i).getDeviceNo());
             }
         }
+        //批量态（>=阈值，默认 3）：合并为一条替代 N 条刷屏（去重窗口保证持续批量时轮内只一条）；
+        //本分支不逐台 raise：避免"1 条合并 + 49 条逐台"回退刷屏
+        if (offlineNos.size() >= barrierProperties.getOfflineBatchThreshold()) {
+            deviceAlarmService.raise(DeviceAlarmService.BATCH_DEVICE_NO, AlarmType.BATCH_OFFLINE,
+                    "批量离线 " + offlineNos.size() + " 台：" + summarizeOffline(offlineNos));
+            return;
+        }
+        //低于阈值（含 0 台）：先解除已存在的批量态（离线数回落，谁开谁关）——再逐台告警（原语义）
+        deviceAlarmService.closeUnhandledAlarm(DeviceAlarmService.BATCH_DEVICE_NO, AlarmType.BATCH_OFFLINE);
+        for (String no : offlineNos) {
+            deviceAlarmService.raise(no, AlarmType.OFFLINE,
+                    "心跳超时(>" + barrierProperties.getHeartbeatTimeoutSeconds() + "s)未收到，判定离线");
+        }
+    }
+
+    /** 批量离线摘要：列表前 20 台 + 超出加"等 N 台"（alarm_content 列 512 上限防溢出） */
+    private String summarizeOffline(List<String> deviceNos) {
+        List<String> head = deviceNos.size() > 20 ? deviceNos.subList(0, 20) : deviceNos;
+        return String.join(",", head) + (deviceNos.size() > 20 ? " 等" + deviceNos.size() + "台" : "");
     }
 }

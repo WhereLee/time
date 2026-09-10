@@ -60,4 +60,20 @@ public class ScheduleJobLogServiceImpl extends ServiceImpl<ScheduleJobLogDao, Sc
 
 		return log;
 	}
+
+	/**
+	 * 查任务最后成功时间（批次4 任务看护）：权威台账=schedule_job_log，失败也落痕（T12），
+	 * 只取 log_state=0 的最大创建时间；无成功记录返回 null
+	 */
+	@Override
+	public Long getLastSuccessTime(Long jobId) {
+		Map<String, Object> row = this.getMap(new QueryWrapper<ScheduleJobLogEntity>()
+				.select("MAX(log_createtime) AS last_ok")
+				.eq("job_id", jobId)
+				.eq("log_state", 0));
+		if (row == null || row.get("last_ok") == null) {
+			return null;
+		}
+		return ((Number) row.get("last_ok")).longValue();
+	}
 }

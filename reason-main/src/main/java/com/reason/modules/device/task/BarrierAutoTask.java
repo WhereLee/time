@@ -3,6 +3,7 @@ package com.reason.modules.device.task;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.reason.common.filter.TraceIdFilter;
 import com.reason.modules.device.config.BarrierProperties;
+import com.reason.modules.device.config.BarrierRedisKeys;
 import com.reason.modules.device.dao.DeviceRecordDao;
 import com.reason.modules.device.entity.DeviceCommandLogEntity;
 import com.reason.modules.device.entity.DeviceRecordEntity;
@@ -18,10 +19,12 @@ import com.reason.modules.device.service.ManualHoldService;
 import com.reason.modules.job.task.ITask;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalTime;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 升降杆自动规则对账任务（barrierAutoTask，Quartz 每分钟）
@@ -47,6 +50,7 @@ public class BarrierAutoTask implements ITask {
     private final DeviceCommandLogService commandLogService;
     private final DeviceAlarmService alarmService;
     private final ManualHoldService manualHoldService;
+    private final StringRedisTemplate stringRedisTemplate;
 
     public BarrierAutoTask(BarrierProperties properties,
                            BarrierTimeRule timeRule,
@@ -55,7 +59,8 @@ public class BarrierAutoTask implements ITask {
                            DeviceCommandService commandService,
                            DeviceCommandLogService commandLogService,
                            DeviceAlarmService alarmService,
-                           ManualHoldService manualHoldService) {
+                           ManualHoldService manualHoldService,
+                           StringRedisTemplate stringRedisTemplate) {
         this.properties = properties;
         this.timeRule = timeRule;
         this.recordDao = recordDao;
@@ -64,6 +69,7 @@ public class BarrierAutoTask implements ITask {
         this.commandLogService = commandLogService;
         this.alarmService = alarmService;
         this.manualHoldService = manualHoldService;
+        this.stringRedisTemplate = stringRedisTemplate;
     }
 
     @Override
@@ -94,14 +100,71 @@ public class BarrierAutoTask implements ITask {
 
         for (DeviceRecordEntity record : records) {
             //单台设备异常（Redis/DB 抖动、seq 生成失败等）不中断整轮对账：
-            //记日志后继续下一台，本台留待下轮自然重试（周期对账的自愈性）
+            //记日志后继续下一台，本台留待下轮自然重试（周期对账的自愈性）；
+            //批次4：连续异常计数升级告警（单轮 WARN 无人可见——批次3 Redis 事故每轮 50 条 WARN 的教训）
             try {
                 reconcileOne(record, desired, action);
+                //成功轮：清连续异常计数 + 关闭未处理升级告警（谁开谁关）
+                clearFailStreak(record.getDeviceNo());
             } catch (Exception e) {
                 log.warn("自动对账处理单台设备异常，跳过 deviceNo={} cause={}",
                         record.getDeviceNo(), e.getMessage());
+                //升级告警是附属副作用，绝不该反噬对账主循环（P4 剧本暴露：content 超列长在 raise
+                //内部炸出——整轮对账中断进 schedule_job_log 失败记录）——双层防御，次级异常仅记日志
+                try {
+                    escalateIfFailing(record.getDeviceNo(), e);
+                } catch (Exception escalateEx) {
+                    log.warn("对账异常升级处理失败（不影响主循环）deviceNo={} cause={}",
+                            record.getDeviceNo(), escalateEx.getMessage());
+                }
             }
         }
+    }
+
+    /**
+     * 对账连续异常升级（批次4）：单台异常计数（Redis INCR，TTL 1h），连续 N 轮 -> 升级显式告警。
+     * 语义=严格连续：任一轮处理成功即清零（抓"持续坏"不抓"偶发抖"——Redis/DB 单发抖动
+     * 不该积累成告警；持续故障如 seq 撞唯一索引会每轮必炸，N 轮内必然触发）
+     */
+    private void escalateIfFailing(String deviceNo, Exception cause) {
+        String key = BarrierRedisKeys.RECONCILE_FAIL_PREFIX + deviceNo;
+        Long streak;
+        try {
+            streak = stringRedisTemplate.opsForValue().increment(key);
+            stringRedisTemplate.expire(key, 1, TimeUnit.HOURS);
+        } catch (RuntimeException redisEx) {
+            //计数不可用（Redis 故障）：降级仅记 WARN，本次不升级（下轮再说）
+            log.warn("对账异常计数失败 deviceNo={} cause={}", deviceNo, redisEx.getMessage());
+            return;
+        }
+        if (streak != null && streak >= properties.getReconcileFailStreakThreshold()) {
+            alarmService.raise(deviceNo, AlarmType.RECONCILE_ERROR,
+                    String.format("对账连续 %d 轮处理异常（最近：%s）——持续故障而非抖动，检查 seq/DB/Redis",
+                            streak, brief(cause)));
+        }
+    }
+
+    /**
+     * 异常摘要截断（P4 剧本暴露）：MyBatis 撞唯一索引的异常 message 是完整 SQL 文本（数千字符），
+     * 直塞 alarm_content(512) 会 Data too long——截断到安全长度（对告警人可读性无损失）
+     */
+    private String brief(Exception cause) {
+        String msg = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
+        return msg.length() <= 200 ? msg : msg.substring(0, 200);
+    }
+
+    /**
+     * 对账处理成功：清连续异常计数 + 关闭未处理升级告警。
+     * 计数未清掉就返回（不关告警）——避免"计数残留 + 告警已关"错位，下轮成功再收尾
+     */
+    private void clearFailStreak(String deviceNo) {
+        try {
+            stringRedisTemplate.delete(BarrierRedisKeys.RECONCILE_FAIL_PREFIX + deviceNo);
+        } catch (RuntimeException e) {
+            log.warn("对账异常计数清理失败 deviceNo={} cause={}", deviceNo, e.getMessage());
+            return;
+        }
+        alarmService.closeUnhandledAlarm(deviceNo, AlarmType.RECONCILE_ERROR);
     }
 
     /**
@@ -116,13 +179,16 @@ public class BarrierAutoTask implements ITask {
             log.debug("手动保持期内，自动规则让位 deviceNo={}", deviceNo);
             return;
         }
-        //熔断维护（0.3）：该设备是否存在"超龄未闭环"流水（上轮校正下发后既没到位也没被 monitor 终结）
-        if (!maintainFailStreak(deviceNo, record)) {
-            return; //本轮已熔断跳过
-        }
-        //仲裁2：离线设备不下发——发了也是 SEND_FAILED 白记账；等它上线，心跳对账+下轮校正自然接管
+        //仲裁2：离线设备直接跳过（批次4 顺序调整）：离线时既发不了指令也无从评估熔断——
+        //熔断判据只对"在线且校正失败"有意义；离线由心跳/离线告警负责（离线设备进熔断
+        //判定会每窗口 raise 校正失败告警——与离线告警重复喊话，且离线设备永远无法靠
+        //下发产生新 ARRIVED 解除熔断——批次4 剧本发现）
         if (!monitorService.isOnline(deviceNo)) {
             return;
+        }
+        //熔断维护（0.3）：该设备是否存在"超龄未闭环"流水（上轮校正下发后既没到位也没被 monitor 终结）
+        if (!maintainFailStreak(deviceNo, record, desired)) {
+            return; //本轮已熔断跳过
         }
         //仲裁3：动作中不抢——非瞬时动作，等它做完（下轮再看，最多多等一分钟）
         if (actual == DeviceState.MOVING.getCode()) {
@@ -152,20 +218,28 @@ public class BarrierAutoTask implements ITask {
      *
      * @return false=已熔断（本轮跳过不下发）
      */
-    private boolean maintainFailStreak(String deviceNo, DeviceRecordEntity record) {
+    private boolean maintainFailStreak(String deviceNo, DeviceRecordEntity record, int desired) {
         int threshold = properties.getAutoFailStreakThreshold();
         List<DeviceCommandLogEntity> recent = commandLogService.list(new LambdaQueryWrapper<DeviceCommandLogEntity>()
                 .eq(DeviceCommandLogEntity::getDeviceNo, deviceNo)
                 .eq(DeviceCommandLogEntity::getTriggerType, com.reason.modules.device.enums.TriggerType.AUTO_RULE.getCode())
                 .orderByDesc(DeviceCommandLogEntity::getCommandSeq)
                 .last("LIMIT " + threshold));
-        if (recent.size() < threshold) {
-            //历史不足 N 条自动校正：无从判"连续失败"，放行
+        if (threshold <= 0 || recent.size() < threshold) {
+            //历史不足 N 条自动校正：无从判"连续失败"，放行；阈值<=0（错位配置）同样放行——
+            //否则空窗口 allMatch=true 会误走熔断分支且 recent.get(0) 越界（批次4 单测暴露）
             return true;
         }
         boolean allFailed = recent.stream()
                 .allMatch(l -> l.getCommandStatus() != CommandStatus.ARRIVED.getCode());
         if (allFailed) {
+            //批次4 恢复标记完善（剧本发现）：设备已到位（实然=应然）却仍挂历史失败窗口——静默恢复场景
+            //（外力到位/心跳对账归位后不再下发，窗口永远翻不了新）——熔断已无意义：放行（后续
+            //应然=实然直接 return，无下发风险），并关闭残留校正失败告警（归位即恢复，停止周期重复喊话）
+            if (record.getDeviceState() == desired) {
+                alarmService.closeUnhandledAlarm(deviceNo, AlarmType.AUTO_CORRECT_FAILED);
+                return true;
+            }
             log.warn("自动校正连续 {} 条未闭环 -> 熔断停自动 deviceNo={}（最近 seq={} 未到位）",
                     threshold, deviceNo, recent.get(0).getCommandSeq());
             alarmService.raise(deviceNo, AlarmType.AUTO_CORRECT_FAILED,

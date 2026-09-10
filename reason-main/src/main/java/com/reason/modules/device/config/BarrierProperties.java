@@ -80,4 +80,33 @@ public class BarrierProperties {
      * 若恢复后立即扫描会全量误报 OFFLINE（宽限 > 重启耗时 + TTL）
      */
     private int onlineStartupGraceSeconds = 90;
+
+    /**
+     * 告警限速滑动窗口秒数（批次4 D-F）：per-type 全局——窗口内同类告警超过上限
+     * 只记日志不落库（防风暴刷屏；批量场景由合并告警先行吸收）
+     */
+    private int alarmRateWindowSeconds = 60;
+
+    /**
+     * 告警限速窗口内上限条数（批次4 D-F）
+     */
+    private int alarmRateMaxPerWindow = 10;
+
+    /**
+     * 批量离线合并告警阈值（批次4 D-F）：单轮扫描离线设备数 >= 该值 -> 合并为一条
+     * BATCH_OFFLINE（替代 N 条 per-device OFFLINE）；回落低于阈值时由扫描关闭合并告警
+     */
+    private int offlineBatchThreshold = 3;
+
+    /**
+     * 任务看护：连续错过触发次数阈值（批次4）——任务最后成功时间超过 N × cron 周期未刷新
+     * 即判停摆（用错过次数而非绝对秒数，自动吸收看护自身的采样点抖动）
+     */
+    private int jobStallMissedTriggers = 2;
+
+    /**
+     * 对账连续异常升级阈值（批次4）：AutoTask 单台设备连续 N 轮处理异常（如 seq 撞唯一索引）
+     * -> 升级显式告警（原行为只记 WARN 静默跳过——批次3 Redis 事故的可见性缺口）
+     */
+    private int reconcileFailStreakThreshold = 5;
 }

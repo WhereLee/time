@@ -30,7 +30,13 @@ public interface DeviceMonitorService {
 
     /**
      * 离线扫描（barrierMonitorTask 周期调用）：
-     * 已接入过（状态≠未接入）但在线 key 已过期的设备 → 离线告警（去重窗口防刷屏）
+     * 已接入过（状态≠未接入）但在线 key 已过期的设备 → 离线告警（去重窗口防刷屏；
+     * 批次4 D-F：单轮离线数超批量阈值时合并为一条 BATCH_OFFLINE，回落自动关闭）
      */
     void scanOffline();
+
+    /**
+     * 统计在线设备数（批次4 指标：pipeline 批量 EXISTS，与离线扫描同手法——避免逐台往返）
+     */
+    int countOnline();
 }

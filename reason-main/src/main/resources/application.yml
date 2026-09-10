@@ -117,6 +117,15 @@ reason:
     manual-hold-minutes: 30
     # 同类告警去重窗口秒数（持续异常不刷屏）
     alarm-dedup-seconds: 300
+    # 告警限速（批次4 D-F）：per-type 全局滑动窗口，窗口内超上限只记日志不落库
+    alarm-rate-window-seconds: 60
+    alarm-rate-max-per-window: 10
+    # 批量离线合并阈值（批次4 D-F）：单轮扫描离线数 >= 该值 -> 一条合并告警（替代 N 条）
+    offline-batch-threshold: 3
+    # 任务看护（批次4）：最后成功时间错过 N 次 cron 触发 -> 停摆告警
+    job-stall-missed-triggers: 2
+    # 对账连续异常升级阈值（批次4）：单台连续 N 轮处理异常 -> 升级告警
+    reconcile-fail-streak-threshold: 5
 
 jasypt:
   encryptor:

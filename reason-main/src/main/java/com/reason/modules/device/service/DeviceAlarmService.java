@@ -14,6 +14,9 @@ import com.reason.modules.device.form.DeviceAlarmForm;
  */
 public interface DeviceAlarmService extends IService<DeviceAlarmEntity> {
 
+    /** 批量告警哨兵设备号（批次4 D-F：批量离线非单设备事件——device_no 承载位约定） */
+    String BATCH_DEVICE_NO = "__batch__";
+
     /**
      * 触发告警（带 Redis SETNX 去重窗口：同设备同类型窗口内只落一条；
      * Redis 丢失后由 DB 时间窗查重兜底防刷屏——0.8）
@@ -57,4 +60,19 @@ public interface DeviceAlarmService extends IService<DeviceAlarmEntity> {
      * @return 自动关闭的告警条数
      */
     int markOnlineRecovered(String deviceNo);
+
+    /**
+     * 关闭指定设备的未处理告警（批次4：自动恢复关闭通用入口）——调用方=产生方（谁开谁关）：
+     * 离线扫描批量态回落关 BATCH_OFFLINE；任务看护恢复关 JOB_STALLED。
+     * 与事件/心跳恢复路径（markRecovered/markOnlineRecovered）分离：那些是"设备状态反转"语义，
+     * 本方法只做"指定键位关闭"，不扩语义
+     *
+     * @return 自动关闭的告警条数
+     */
+    int closeUnhandledAlarm(String deviceNo, AlarmType type);
+
+    /**
+     * 统计未处理告警数（批次4 指标：处置面观测）
+     */
+    long countUnhandled();
 }
