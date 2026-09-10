@@ -28,10 +28,10 @@
         <jasypt.version>3.0.5</jasypt.version>
         <kaptcha.version>0.0.9</kaptcha.version>
         <knife4j.version>4.5.0</knife4j.version>
-        <joda.time.version>2.12.7</joda.time.version>
+        <joda.time.version>2.14.3</joda.time.version>
         <fastjson2.version>2.0.65</fastjson2.version>
         <hutool.version>5.8.25</hutool.version>
-        <lombok.version>1.18.34</lombok.version>
+        <lombok.version>1.18.48</lombok.version>
         <poi.version>5.2.5</poi.version>
         <commons.lang3.version>3.20.0</commons.lang3.version>
         <commons.io.version>2.22.0</commons.io.version>
