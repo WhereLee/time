@@ -6,7 +6,7 @@
 # 凭据:   经环境变量注入（勿写死脚本内）：
 #           MYSQL_USER（默认 root）、MYSQL_PASSWORD（必填）
 #           REDIS_PASSWORD（可选；Redis 配置了 requirepass 时必填）
-# 定时:   写入 /opt/reason/config/backup.env（600）+ crontab：
+# 定时:   写入 /opt/reason/config/backup.env（600）；root crontab（需读 /var/lib/redis 的 RDB）：
 #           30 2 * * * . /opt/reason/config/backup.env && /opt/reason/config/backup.sh >> /var/log/reason-backup.log 2>&1
 # 输出:   /opt/reason/backup/mysql/reason_faster_<ts>.sql.gz
 #         /opt/reason/backup/redis/dump_<ts>.rdb
@@ -24,7 +24,8 @@ TS="$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$BACKUP_ROOT/mysql" "$BACKUP_ROOT/redis"
 
 # ---- 1) MySQL 全量（单事务一致性快照；含例程/触发器/事件）----
-MYSQL_PWD="$MYSQL_PASSWORD" mysqldump \
+# 云上 dry-run 修复：显式 -u"$MYSQL_USER"（原默认按 OS 用户，专用备份账号会登录失败）
+MYSQL_PWD="$MYSQL_PASSWORD" mysqldump -u"$MYSQL_USER" \
   --single-transaction --routines --triggers --events \
   --set-gtid-purged=OFF \
   "$DB_NAME" | gzip > "$BACKUP_ROOT/mysql/${DB_NAME}_${TS}.sql.gz"
