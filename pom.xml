@@ -29,7 +29,7 @@
         <kaptcha.version>0.0.9</kaptcha.version>
         <knife4j.version>4.5.0</knife4j.version>
         <joda.time.version>2.12.7</joda.time.version>
-        <fastjson2.version>2.0.53</fastjson2.version>
+        <fastjson2.version>2.0.65</fastjson2.version>
         <hutool.version>5.8.25</hutool.version>
         <lombok.version>1.18.34</lombok.version>
         <poi.version>5.2.5</poi.version>
