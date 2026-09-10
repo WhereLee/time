@@ -35,6 +35,7 @@
 - block-records/批次6-样例交付化.md
 - block-records/批次7-质量加固与容量画像.md
 - block-records/批次8-五项修复.md
+- block-records/批次8-改动留存.md（本次全部改动的留存索引：提交/未提交/库外三档）
 
 ### 踩坑记录
 - pitfalls/mockito-nested-stubbing.md
@@ -52,6 +53,7 @@
 - fixes/quartz-selectwithlocksql-mysql-dialect.md
 - fixes/http-event-missing-required-fields-500.md
 - fixes/cross-generation-event-replay.md
+- fixes/reject-log-flood-throttling.md
 
 ### 知识点（技术资产：原理/权衡/边界，一主题一文件）
 - knowledge/mockito-strict-stubs.md

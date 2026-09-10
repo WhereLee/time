@@ -1,5 +1,6 @@
 package com.reason.modules.device.config;
 
+import com.reason.common.utils.LogThrottle;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -65,10 +66,13 @@ public class DeviceTrafficGuard {
 
     private final StringRedisTemplate stringRedisTemplate;
     private final DeviceTrafficProperties properties;
+    private final LogThrottle logThrottle;
 
-    public DeviceTrafficGuard(StringRedisTemplate stringRedisTemplate, DeviceTrafficProperties properties) {
+    public DeviceTrafficGuard(StringRedisTemplate stringRedisTemplate, DeviceTrafficProperties properties,
+                              LogThrottle logThrottle) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.properties = properties;
+        this.logThrottle = logThrottle;
     }
 
     /**
@@ -90,16 +94,21 @@ public class DeviceTrafficGuard {
         }
         checkDeviceBucket(deviceNo, "EVENT");
         if (!tryAcquire(GLOBAL_BUCKET_KEY, properties.getGlobalRps(), properties.getGlobalBurst())) {
-            log.warn("[上行限流] 全局水位超限，拒绝事件上报 deviceNo={}", deviceNo);
+            //批次8 P3：拒绝路径日志节流（洪峰下每键每窗口一条+抑制计数，防日志放大）
+            logThrottle.warn(log, "traffic-global",
+                    () -> "[上行限流] 全局水位超限，拒绝事件上报 deviceNo=" + deviceNo);
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "上行水位超限，请稍后重试");
         }
     }
 
     private void checkDeviceBucket(String deviceNo, String category) {
-        if (!tryAcquire(DEVICE_BUCKET_PREFIX + normalize(deviceNo),
+        String normalized = normalize(deviceNo);
+        if (!tryAcquire(DEVICE_BUCKET_PREFIX + normalized,
                 properties.getDeviceRps(), properties.getDeviceBurst())) {
-            log.warn("[上行限流] 单设备超限拒绝 category={} deviceNo={}（{}rps 桶满）",
-                    category, deviceNo, properties.getDeviceRps());
+            //批次8 P3：per (类别,设备) 分键节流——单设备洪峰只出窗口首条+计数；随机设备号由溢出键兜底
+            logThrottle.warn(log, "traffic-dev:" + category + ":" + normalized,
+                    () -> "[上行限流] 单设备超限拒绝 category=" + category + " deviceNo=" + deviceNo
+                            + "（" + properties.getDeviceRps() + "rps 桶满）");
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "设备上行频率超限");
         }
     }

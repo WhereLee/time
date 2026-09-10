@@ -1,0 +1,20 @@
+=== B8 P3 verification: reject-path log throttling, S3 rerun (after LogThrottle) ===
+context: batch7 S3 produced 6056 warn lines in 60s (~100 lines/s, 1.3MB/min) - reject paths had no log quota.
+  This run replays the SAME scenario on the P3 build (LogThrottle on 401/429 paths) to measure the log delta.
+env: platform restarted 2026-09-11 01:13 with the P3 build (mvn spring-boot:run, health UP in 7.4s);
+  sim auto-recovered 50/50 online; warn.log baseline before flood = 7907 lines / 1554.5KB (shared-read counted).
+plan: _b4_event_flood.jmx (unchanged) | -Jthreads=30 -JdevicePool=30 -Jthread_rps_x100=400 -Jduration=60
+
+http POST: 6960 (bind samples excluded: 30) | wall 58.6s | 118.8 rps
+response: 401=6035 (86.7%) 429=925 (13.3%)   == identical split to pre-fix run (6056/924) => response semantics unchanged
+
+warn.log delta: 32 lines (7907 -> 7939; +7.1KB)   => from 6056 lines pre-fix to 32 lines: **-99.5%**
+  model check: 3 keys (http-status:401 / http-status:429 / traffic-global) x ~12 windows (60s / 5s) ~= 36 expected; 32 measured.
+
+throttle output samples (tail, first-sample keeps identity + suppressed counter):
+  [status=429] HTTP 状态异常透传 status=429 reason=上行水位超限，请稍后重试（窗口内另抑制同类日志 96 条）
+  [status=401] HTTP 状态异常透传 status=401 reason=设备签名无效: BARRIER-B-24（窗口内另抑制同类日志 502 条）
+  [traffic-global] [上行限流] 全局水位超限，拒绝事件上报 deviceNo=BARRIER-B-11（窗口内另抑制同类日志 96 条）
+
+liveness: redis barrier:online = 50/50 after flood (heartbeat lifeline unaffected, same as batch7).
+note: per-device buckets did NOT trigger (4 rps < 5 rps) - all 429 are global-gate rejections, as in batch7.

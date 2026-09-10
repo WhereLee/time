@@ -8,6 +8,7 @@
 
 package com.reason.common.exception;
 
+import com.reason.common.utils.LogThrottle;
 import com.reason.common.utils.Result;
 import io.swagger.v3.oas.annotations.Hidden;
 import lombok.extern.slf4j.Slf4j;
@@ -26,8 +27,15 @@ import org.springframework.web.servlet.NoHandlerFoundException;
  */
 @Slf4j
 @RestControllerAdvice
-@Hidden // Boot 3.5 兼容：knife4j 4.5.0 内置 springdoc 2.3.0 扫描 @RestControllerAdvice 时调用已被 Spring 6.2 移除的 ControllerAdviceBean(Object) 构造器，导致 /v3/api-docs 500；@Hidden 让 springdoc 跳过本类（异常处理器无需进文档）。详见 document/pitfalls/springdoc-controlleradvice-boot4-incompat.md
+@Hidden // Boot 3.5 兼容：knife4j 4.5.0 内置 springdoc 2.3.0 扫描 @RestControllerAdvice 时调用已被 Spring 6.2 移除的 ControllerAdviceBean(Object) 构造器，导致 /v3/api-docs 500；@Hidden 让 springdoc 跳过本类（异常处理器无需进文档）。详见 document/pitfalls/springdoc-controlleradvice-boot34-incompat.md
 public class RRExceptionHandler {
+
+	private final LogThrottle logThrottle;
+
+	public RRExceptionHandler(LogThrottle logThrottle) {
+		this.logThrottle = logThrottle;
+	}
+
 	/**
 	 * 处理自定义异常
 	 */
@@ -48,7 +56,11 @@ public class RRExceptionHandler {
 	@ExceptionHandler(ResponseStatusException.class)
 	public ResponseEntity<Result> handleResponseStatus(ResponseStatusException e) {
 		Result result = Result.error(e.getStatusCode().value(), e.getReason());
-		log.warn("HTTP 状态异常透传 status={} reason={}", e.getStatusCode().value(), e.getReason());
+		//批次8 P3：拒绝路径日志节流——B4 实测假签名洪峰下本行为每条 401 各打一条 warn
+		//（≈100 行/秒、1.3MB/分钟）；现按状态码分键每 5s 首条+抑制计数（可见性不丢，输出量有界）
+		int status = e.getStatusCode().value();
+		logThrottle.warn(log, "http-status:" + status,
+				() -> "HTTP 状态异常透传 status=" + status + " reason=" + e.getReason());
 		return ResponseEntity.status(e.getStatusCode()).body(result);
 	}
 

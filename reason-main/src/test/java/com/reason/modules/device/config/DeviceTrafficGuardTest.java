@@ -32,7 +32,8 @@ class DeviceTrafficGuardTest {
     void setUp() {
         stringRedisTemplate = mock(StringRedisTemplate.class);
         properties = new DeviceTrafficProperties();
-        guard = new DeviceTrafficGuard(stringRedisTemplate, properties);
+        guard = new DeviceTrafficGuard(stringRedisTemplate, properties,
+                new com.reason.common.utils.LogThrottle());
     }
 
     private void stubScript(Object... returns) {
