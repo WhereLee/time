@@ -1,0 +1,21 @@
+[Unit]
+Description=reason-barrier-sim 升降杆模拟器（扮演十公里外的杆 :8300，仅回环）
+After=network.target reason-main.service
+Wants=reason-main.service
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/reason/sim
+# 设备密钥注入（BARRIER_E01_SECRET / BARRIER_W02_SECRET，600）
+EnvironmentFile=/opt/reason/config/sim/reason-barrier-sim.env
+ExecStart=/usr/bin/java -Xms128m -Xmx256m -Dfile.encoding=UTF-8 \
+  -jar /opt/reason/sim/reason-barrier-sim-1.0.0.jar
+Restart=on-failure
+RestartSec=5
+# Java 进程被 systemd stop 时退出码 143（SIGTERM）视为正常
+SuccessExitStatus=143
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

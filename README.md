@@ -26,9 +26,10 @@
 
 ```
 reason-faster
-├── pom.xml              父 POM（聚合，单模块）
-├── db/reason-faster.sql  建库脚本（含初始账号/角色/菜单）
-├── document/            文档体系：块记录/坑位/修复/知识点/roadmap（一问题一文件）
+├── pom.xml              父 POM（聚合 reason-main）
+├── db/  建库与增量 SQL（reason-faster.sql 基线；02-09 barrier 增量=文件名序即依赖序，幂等）
+├── document/            文档体系：块记录/坑位/修复/知识点/roadmap/部署（一问题一文件）
+├── reason-barrier-sim/  升降杆模拟器（独立模块不聚合父 pom；启动见 document/升降杆样例-运行与演示手册.md）
 └── reason-main
     └── src/main/java/com/reason
         ├── ReasonApplication.java   启动类
@@ -50,9 +51,9 @@ reason-faster
 
 2. **配置**：`application-dev.yml`（数据源 root/root）、`application.yml`（端口 8200、context-path /api）
 
-3. **启动**
+3. **启动**（T16 起平台必须显式 profile；无 profile=数据源缺失 fail-fast，是预期不是故障）
    ```
-   cd reason-main && mvn spring-boot:run
+   mvn -pl reason-main spring-boot:run -Dspring-boot.run.profiles=dev
    ```
 
 4. **访问**
@@ -92,7 +93,7 @@ reason-faster
 
 ## 测试与 CI
 
-- **单元测试**：核心链路 22 用例——密码编解码（含 Shiro 位级兼容取证向量）、认证过滤器三态、token 服务全分支、登录（BCrypt 渐进升级/尝试锁定）
+- **单元测试**：核心链路 119 用例（批次5 时点）——密码编解码（含 Shiro 位级兼容取证向量）、认证过滤器三态、token 服务全分支、登录防护（BCrypt 渐进升级/账号×IP 组合锁/伪造 XFF 被忽略）、设备域全链路
 - **集成测试**（`*IT`，仅 CI 执行）：Testcontainers 起真实 MySQL 8 + Redis，跑完整 HTTP 认证链路（401/登录/带 token 访问/伪造 token）
 - **CI**：GitHub Actions（`.github/workflows/ci.yml`），push/PR 触发 `mvn verify`（单测 + 集成测试）
 

@@ -1,8 +1,8 @@
 # 待办：LoginAttemptGuard 抽取重构（登录尝试锁定逻辑）
 
-> 状态：待触发
+> 状态：**已完成（批次5 T19，2026-09-10）**
 > 登记时间：2026-09-04
-> 触发条件：登录 / 口令锁定逻辑需要变更时（变更前先完成本重构）
+> 触发条件：登录 / 口令锁定逻辑需要变更时（变更前先完成本重构）——已由批次5 T19 触发并执行
 
 ## 背景
 
@@ -22,6 +22,12 @@ A1 只测关键分支（BCrypt 登录成功 / 遗留用户登录触发升级 / �
 
 - 抽取 `LoginAttemptGuard` 组件：`isLocked(loginname)` / `onFailure(loginname, limit, lockTime)` / `onSuccess(loginname)`
 - 先为 LoginAttemptGuard 写 4 个单测，再迁移 login 的调用，最后删除 login 内联逻辑
+
+## 执行记录（批次5 T19，2026-09-10）
+
+- **触发原因**：T19 认证前置整改（loginname+IP 双维度限速）需变更锁定逻辑——先完成本重构再改。
+- **实际形态**（比原方案扩展为双维度）：`LoginAttemptGuard`（`modules/sys/security/`）——`assertNotBlocked(loginname, ip)`（预检：账号组合锁 / IP 闸）/ `onFailure(loginname, ip)` 返回 `FailureOutcome{NORMAL, LOCKED_BY_ACCOUNT, LOCKED_BY_IP}` / `onSuccess(loginname, ip)` 三键清零；key：`login:fail:acct:{n}:{ip}` / `login:lock:acct:{n}:{ip}` / `login:fail:ip:{ip}`。
+- **单测 8 用例**（超过原计划 4 个）；`SysUserServiceImpl.login` 内联逻辑已删除，调用迁移完成（login 单测 5 用例同步）。
 
 ## 影响
 

@@ -4,7 +4,7 @@
 
 | 目录 | 内容 | 命名规则 |
 |---|---|---|
-| `block-records/` | 块循环每块的阶段记录（做了什么、取舍、验证结果） | `A{n}-{主题}.md` |
+| `block-records/` | 块循环每块的阶段记录（做了什么、取舍、验证结果） | `批次{n}-{主题}.md`；早期块记录为自由主题名 |
 | `deploy/` | 部署资产：systemd unit、部署脚本、云服务器手册 | `{主题}-{类型}.{sh,md,service}` |
 | `pitfalls/` | 踩坑记录（Bug 类别 / 根因 / 修复模式 / 教训，状态标签） | 英文短横线主题名 |
 | `fixes/` | 缺陷修复记录（来源缺陷、修复方案、回归验证） | 英文短横线主题名 |
@@ -15,12 +15,22 @@
 ## 当前文件清单
 
 ### 部署资产
-- deploy/云服务器部署手册.md（环境/安全清单/部署/密钥管理）
-- deploy/reason-main.service（systemd unit）
+- deploy/云服务器部署手册.md（barrier 形态：MQ 三进程/密钥注入/验收清单）
+- deploy/reason-main.service（平台 systemd unit）
+- deploy/reason-barrier-sim.service（设备模拟 systemd unit）
 
 ### 块记录（框架演进）
 - block-records/quartz-starter-migration.md
 - block-records/security-debt-cleanup.md
+- block-records/升降杆完全闭环-监控与自动升降.md
+- block-records/阶段2-实施记录.md
+- block-records/MQ-ENV-NOTES.md
+- block-records/B1-可观测性地基.md
+- block-records/S1-调度健壮性与双实例实证.md
+- block-records/批次2-批量设备与注入器补全.md
+- block-records/批次3-量下回归与通道终态.md
+- block-records/批次4-告警增强与任务看护.md
+- block-records/批次5-横切治理与毫秒化.md
 
 ### 踩坑记录
 - pitfalls/mockito-nested-stubbing.md
@@ -47,5 +57,5 @@
 - knowledge/rbac-menu-permission-model.md
 
 ### 待办
-- roadmap/login-attempt-guard-extraction.md
+- roadmap/login-attempt-guard-extraction.md（✅ 已完成，批次5 T19）
 - roadmap/async-mdc-taskdecorator.md
