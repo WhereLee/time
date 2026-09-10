@@ -18,6 +18,7 @@
 | 7 | [验证剧本](scripts/verify/README.md) | 批次2-7 剧本与运行证据（可复跑） |
 | 8 | [云服务器部署手册](document/deploy/云服务器部署手册.md) | 单机六进程全量复现（含验收清单） |
 | 9 | [容量画像与排障实录](document/knowledge/heartbeat-event-capacity-profile.md) | JMeter 实测：限流桶边界 / 80rps 画像 / JVM 采样 / 生命线隔离 |
+| 10 | [Git 与 CI 交接手册](document/Git与CI-交接手册.md) | agent 接手操作：提交流程 / CI 验证 / 范围纪律 / 悬置状态对表 |
 
 ## 样例能力速览
 
