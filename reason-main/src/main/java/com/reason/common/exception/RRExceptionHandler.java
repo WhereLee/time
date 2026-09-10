@@ -9,6 +9,7 @@
 package com.reason.common.exception;
 
 import com.reason.common.utils.Result;
+import io.swagger.v3.oas.annotations.Hidden;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -25,6 +26,7 @@ import org.springframework.web.servlet.NoHandlerFoundException;
  */
 @Slf4j
 @RestControllerAdvice
+@Hidden // Boot 3.5 兼容：knife4j 4.5.0 内置 springdoc 2.3.0 扫描 @RestControllerAdvice 时调用已被 Spring 6.2 移除的 ControllerAdviceBean(Object) 构造器，导致 /v3/api-docs 500；@Hidden 让 springdoc 跳过本类（异常处理器无需进文档）。详见 document/pitfalls/springdoc-controlleradvice-boot4-incompat.md
 public class RRExceptionHandler {
 	/**
 	 * 处理自定义异常

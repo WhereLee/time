@@ -3,7 +3,7 @@
 > **是什么**：一个面向**物联网设备接入**的端到端样例工程——50 台虚拟升降杆（独立模拟器进程）接入平台，覆盖
 > per-device HMAC 设备认证、可靠事件通道（RocketMQ 默认 + HTTP 降级三态）、指令闭环状态机（seq 幂等 + QUERY_STATE 对账）、
 > 告警全生命周期（去重/限速/合并/自动恢复）、traceId 全链路可观测、Quartz 集群双实例实证、50 台量级回归与红队式安全治理。
-> 底层是 **reason-faster 基础框架**（renren-security MIT 深度改造：JDK 17 + Spring Boot 3.2 + Spring Security 6 + MyBatis-Plus + Quartz 集群）。
+> 底层是 **reason-faster 基础框架**（renren-security MIT 深度改造：JDK 17 + Spring Boot 3.5 + Spring Security 6 + MyBatis-Plus + Quartz 集群）。
 
 ## 文档导航（按阅读顺序）
 
@@ -38,14 +38,14 @@
 | 组件 | 版本 | 说明 |
 |---|---|---|
 | JDK | 17 LTS | 本地环境 Java 17 |
-| Spring Boot | 3.2.12 | javax → jakarta 全量迁移 |
+| Spring Boot | 3.5.16 | 双端（main/sim）严格对齐；javax → jakarta 全量迁移 |
 | MyBatis-Plus | 3.5.7 | `mybatis-plus-spring-boot3-starter` |
-| Spring Security | 6.2.x | Boot BOM 管理；过滤器链 + STATELESS + @PreAuthorize（见下文） |
-| Druid | 1.2.23 | `druid-spring-boot-3-starter`，慢 SQL 监控 |
+| Spring Security | 6.5.x | Boot BOM 管理；过滤器链 + STATELESS + @PreAuthorize（见下文） |
+| Druid | 1.2.28 | `druid-spring-boot-3-starter`，慢 SQL 监控 |
 | Redis | spring-data-redis | `spring.data.redis`（boot3 前缀），缓存开关 `reason.redis.open` |
-| Quartz | 2.3.2 | spring-boot-starter-quartz（配置 yml 化），JDBC JobStore 集群模式 |
+| Quartz | 2.5.2 | spring-boot-starter-quartz（配置 yml 化），JDBC JobStore 集群模式 |
 | Knife4j | 4.5.0 | OpenAPI 3 接口文档（`/doc.html`） |
-| fastjson2 | 2.0.53 | 替换 fastjson 1.x（安全 + 性能） |
+| fastjson2 | 2.0.65 | 替换 fastjson 1.x（安全 + 性能） |
 | Jasypt | 3.0.5 | 配置文件加密 |
 | MySQL / PostgreSQL | 8.x / 18.x | 双驱动（默认 MySQL） |
 
