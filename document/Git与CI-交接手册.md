@@ -1,6 +1,7 @@
 # Git 与 CI 交接手册（Agent 操作版）
 
 > 受众：在本工作区接手的 agent / 开发者。读完本手册即可独立完成「改动 → 提交 → 推送 → CI 验证」全流程。
+> 协作层约定（沟通方式 / 动手确认 / 块循环 / 红线）见《协作约定与工作习惯-交接手册.md》——建议先读那份、再读本份。
 > 基线事实（2026-09-11 验证）：remote `git@github.com:WhereLee/time.git`（SSH）、分支 `master`、`gh` CLI 2.96.0 已登录（账号 WhereLee）。状态会变化——以 `git status` / `git log origin/master..HEAD --oneline` 实际输出为准。
 
 ## 〇、3 分钟上手
