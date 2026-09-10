@@ -1,0 +1,24 @@
+t0 source counts snapshot taken (live db keeps writing; assertions use window [t0,t1])
+PASS: mysqldump exits 0
+dump size = 1003640 bytes
+PASS: dump file non-trivial (>500KB)
+PASS: dump contains device_record DDL
+PASS: restore import exits 0
+rowcount device_record: t0=52 t1=52 restore=52
+PASS: restore in window [t0,t1] for device_record
+rowcount device_command_log: t0=526 t1=526 restore=526
+PASS: restore in window [t0,t1] for device_command_log
+rowcount device_alarm: t0=661 t1=661 restore=661
+PASS: restore in window [t0,t1] for device_alarm
+rowcount sys_log: t0=538 t1=538 restore=538
+PASS: restore in window [t0,t1] for sys_log
+rowcount schedule_job: t0=4 t1=4 restore=4
+PASS: restore in window [t0,t1] for schedule_job
+rowcount sys_param: t0=8 t1=8 restore=8
+PASS: restore in window [t0,t1] for sys_param
+rowcount sys_user: t0=2 t1=2 restore=2
+PASS: restore in window [t0,t1] for sys_user
+rowcount sys_role_menu: t0=53 t1=53 restore=53
+PASS: restore in window [t0,t1] for sys_role_menu
+restore drill cleanup done (temp db dropped, source untouched)
+B6-BACKUP RESULT: PASS

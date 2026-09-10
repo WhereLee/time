@@ -1,0 +1,60 @@
+{
+  "_note": "协议 v2 签名契约共享样例：平台与 sim 双端单测各自读取本文件，用本端 DeviceSignature 实现重算 canonical 与 sign 并断言一致——把'双端人工锁步'钉成机器可验（T18 轻量方案）。testSecret 为测试固定值，非任何环境的真实密钥。",
+  "algorithm": "HmacSHA256（hex 小写输出）",
+  "canonicalRules": {
+    "event": "deviceNo|state|commandSeq|bootId|eventSeq（null -> 空串位）",
+    "heartbeat": "deviceNo|state",
+    "command": "deviceNo|action|commandSeq"
+  },
+  "testSecret": "test-only-secret-0123456789abcdef",
+  "samples": [
+    {
+      "name": "event_with_command",
+      "kind": "event",
+      "deviceNo": "BARRIER-T-01",
+      "state": 1,
+      "commandSeq": 16,
+      "bootId": "testboot01",
+      "eventSeq": 2,
+      "canonical": "BARRIER-T-01|1|16|testboot01|2",
+      "sign": "5bf2885a3282c4669487ea99a76e2b13dce2841cb1f14685b56dd73e09029967"
+    },
+    {
+      "name": "event_null_command_seq",
+      "kind": "event",
+      "deviceNo": "BARRIER-T-01",
+      "state": 2,
+      "commandSeq": null,
+      "bootId": "testboot01",
+      "eventSeq": 3,
+      "canonical": "BARRIER-T-01|2||testboot01|3",
+      "sign": "3d34543aeb36438d240cd4d259a9a04f65661cf4121f12203772397083f1bcfe"
+    },
+    {
+      "name": "heartbeat",
+      "kind": "heartbeat",
+      "deviceNo": "BARRIER-T-01",
+      "state": 1,
+      "canonical": "BARRIER-T-01|1",
+      "sign": "a4c51f56406383a2b2270f1646e68f380f9cc68020b33f999d9145c1e6f77ccd"
+    },
+    {
+      "name": "command_open",
+      "kind": "command",
+      "deviceNo": "BARRIER-T-01",
+      "action": "OPEN",
+      "seq": 17,
+      "canonical": "BARRIER-T-01|OPEN|17",
+      "sign": "f3dbaf569d26d0e43714144b26844e7b8ff781ba4c1a57b81840cc7d47be4a9a"
+    },
+    {
+      "name": "command_query_state",
+      "kind": "command",
+      "deviceNo": "BARRIER-T-01",
+      "action": "QUERY",
+      "seq": 0,
+      "canonical": "BARRIER-T-01|QUERY|0",
+      "sign": "6e53865520ea8574434b569f016e3c3c91f77c627dddce155ae4659757960e9d"
+    }
+  ]
+}

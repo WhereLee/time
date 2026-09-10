@@ -15,7 +15,8 @@
 ## 当前文件清单
 
 ### 部署资产
-- deploy/云服务器部署手册.md（barrier 形态：MQ 三进程/密钥注入/验收清单）
+- deploy/云服务器部署手册.md（barrier 形态：MQ 三进程/密钥注入/验收清单/备份恢复§8/版本回滚§9/安全清单§10）
+- deploy/backup.sh（MySQL 全量 + Redis RDB 定时备份，保留策略；恢复步骤见手册 §8）
 - deploy/reason-main.service（平台 systemd unit）
 - deploy/reason-barrier-sim.service（设备模拟 systemd unit）
 

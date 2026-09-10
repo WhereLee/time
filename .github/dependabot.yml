@@ -1,0 +1,28 @@
+# 依赖更新机器人（批次6 工程台账）：每周一自动开 PR，由 CI 双 job 把关
+# 覆盖三个依赖域：根 pom（聚合 reason-main）、sim 独立模块、GitHub Actions
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+  - package-ecosystem: maven
+    directory: "/reason-barrier-sim"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies

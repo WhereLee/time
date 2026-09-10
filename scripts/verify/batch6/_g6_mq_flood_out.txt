@@ -1,0 +1,42 @@
+=== S-MQ-FLOOD start 2026-09-10 21:47:49 ===
+precheck: login ok
+PASS: precheck: 50 batch devices online in redis
+PASS: precheck: sim status returns 50 devices
+PASS: precheck: mqadmin present
+MQ SAMPLE [baseline] diff=0 inflight=0 tps=0
+PASS: baseline: topicStatus readable
+PASS: baseline: backlog zero before flood
+baseline: off0=1011 mainErrLines=59891 simErrLines=1 t0ms=1789048069321
+=== ROUND 1 OPEN x50 (fast) ===
+MQ SAMPLE [mid-open] diff=0 inflight=0 tps=0
+round1 OPEN sent: ok=50 fail=0 wallSec=11
+PASS: round1: 50/50 open accepted
+MQ SAMPLE [post-open-send] diff=0 inflight=0 tps=0.93
+  wait UP: still-not-target=0 (try 1/40)
+round1: all 50 UP confirmed
+MQ SAMPLE [after-up] diff=0 inflight=0 tps=1.67
+=== ROUND 2 CLOSE x50 (fast) ===
+MQ SAMPLE [mid-close] diff=0 inflight=0 tps=2.03
+round2 CLOSE sent: ok=50 fail=0 wallSec=11
+PASS: round2: 50/50 close accepted
+MQ SAMPLE [post-close-send] diff=1 inflight=0 tps=3.13
+  wait DOWN: still-not-target=0 (try 1/40)
+round2: all 50 DOWN confirmed
+MQ SAMPLE [settle-1] diff=0 inflight=0 tps=3.33
+PASS: backlog drains to zero (Diff=0 and Inflight=0)
+PASS: final: online=50 after flood (liveness unaffected)
+MQ offset growth in window: 1011 -> 1211 (+200)
+PASS: events really landed in topic (offset growth >= 200)
+window manual rows: ARRIVED=100 notArrived=0 pendingAllTime=0
+PASS: flow: 100/100 window manual commands ARRIVED
+PASS: no PENDING command for B-%
+final states: 2 x 50
+PASS: final: all 50 devices DOWN
+PASS: no new B-group alarms in window
+error.log lines: main 59891 -> 59891 | sim 1 -> 1
+PASS: platform error.log: no new line in window
+PASS: sim error.log: no new line in window
+-- sim error.log tail (context, pre-existing lines) --
+  2026-09-10 16:15:36.033 ERROR [7eb678ec035ba50a8a2ff503ab55aff3] c.r.barrier.reporter.MqEventReporter - [MQ上报转入待恢复] broker 疑似不可用，事件持留队首按 5s 节拍等待恢复（D5 保序：本事件不发送成
+=== S-MQ-FLOOD done 2026-09-10 21:48:56 ===
+S-MQ-FLOOD RESULT: PASS
