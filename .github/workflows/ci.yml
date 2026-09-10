@@ -27,6 +27,34 @@ jobs:
       - name: Maven verify
         run: mvn -B -ntp verify -DexcludedGroups=mq
 
+      # 双端 Spring Boot 版本一致性：契约测试的前提是两端同版本——
+      # 升级一侧忘另一侧 = 隐性行为分裂（Jackson/HTTP 客户端差异），这里机械拦截
+      - name: Verify dual-end Spring Boot version alignment
+        run: |
+          MAIN_V=$(grep -A2 '<artifactId>spring-boot-starter-parent</artifactId>' pom.xml | grep '<version>' | sed -E 's/.*<version>(.*)<\/version>.*/\1/')
+          SIM_V=$(grep -A2 '<artifactId>spring-boot-starter-parent</artifactId>' reason-barrier-sim/pom.xml | grep '<version>' | sed -E 's/.*<version>(.*)<\/version>.*/\1/')
+          echo "spring-boot-starter-parent: main=$MAIN_V sim=$SIM_V"
+          [ "$MAIN_V" = "$SIM_V" ] || { echo "::error::Spring Boot 版本分裂：main=$MAIN_V sim=$SIM_V（升级必须双端同步）"; exit 1; }
+
+      # 覆盖率摘要：直接读 jacoco.csv 打印总 LINE 覆盖率（失败也打——用于快速定位回归）
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f reason-main/target/site/jacoco/jacoco.csv ]; then
+            awk -F, 'NR>1 {lm+=$8; lc+=$9} END {printf "LINE coverage: %.1f%% (%d/%d)\n", 100*lc/(lm+lc), lc, lm+lc}' reason-main/target/site/jacoco/jacoco.csv
+          else
+            echo "jacoco.csv not found (tests failed before report generation?)"
+          fi
+
+      # 覆盖率报告留档（分包数据比日志更全，供事后分析）
+      - name: Upload JaCoCo report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: reason-main/target/site/jacoco/
+          retention-days: 30
+
   # 模拟器独立 job：reason-barrier-sim 不聚合父 pom（聚合与继承解耦设计），
   # 独立构建跑其 BarrierTest——协议双端任一边改动 CI 即刻红灯（T18 修复）
   barrier-sim:
