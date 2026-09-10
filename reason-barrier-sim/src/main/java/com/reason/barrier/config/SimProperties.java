@@ -95,7 +95,14 @@ public class SimProperties {
     private String secretFile = "";
 
     /**
-     * MQ 事件通道（阶段2 双写：事件经 RocketMQ 投递，HTTP 保留并行——D6 双写期；
+     * 事件通道形态（批次3，D-A 终态开关；只作用于事件通道——心跳恒 HTTP 不走 MQ，D3）：
+     * dual=双写（对照期默认，HTTP+MQ 并行）/ mq=仅 MQ（终态：HTTP 事件退役为降级开关）/
+     * http=仅 HTTP（降级回滚形态）。取值非法、或 mq 形态但 sim.mq.enabled=false——启动即失败（fail-fast）
+     */
+    private String eventChannel = "dual";
+
+    /**
+     * MQ 事件通道（阶段2 双写 → 批次3 三态路由：是否投递 MQ 由 eventChannel 决定；
      * 心跳不走 MQ——D3 定稿：判活不依赖 broker）
      */
     private Mq mq = new Mq();
@@ -201,7 +208,7 @@ public class SimProperties {
     public static class Mq {
 
         /**
-         * 双写开关（false=纯 HTTP 回滚形态，MqEventReporter Bean 不创建）
+         * MQ 通道启用开关（false=Bean 不创建，纯 HTTP 回滚形态；event-channel=mq 时与 false 组合=启动失败）
          */
         private boolean enabled = true;
 
