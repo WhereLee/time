@@ -200,11 +200,15 @@ class BarrierTest {
         barrier.injectFault();
         barrier.execute(BarrierAction.OPEN, 1, TRACE);
         waitForState(barrier, BarrierState.FAULT);
+        //先等故障上报到位再复位：waitForState 只保证锁内置位，锁外上报尚有间隙——
+        //复位若插入该间隙，DOWN 上报会偶发倒序到 FAULT 前（全量负载下实测 flaky）。
+        //真实时序也如此：运维先见故障上报、再人工复位
+        waitForExactly(reporter, BarrierState.MOVING, BarrierState.FAULT);
 
         barrier.recover(TRACE);
         assertThat(barrier.getState()).isEqualTo(BarrierState.DOWN);
         assertThat(barrier.isFaultInjected()).isFalse();
-        //复位回落也是一次状态变化：必须上报（平台台账随设备回正）——锁内置位与锁外上报有间隙，轮询等齐
+        //复位回落也是一次状态变化：必须上报（平台台账随设备回正）——上两步已定序，全序确定
         waitForExactly(reporter, BarrierState.MOVING, BarrierState.FAULT, BarrierState.DOWN);
 
         //复位后恢复正常接受指令
