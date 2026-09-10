@@ -32,6 +32,7 @@
 - block-records/批次3-量下回归与通道终态.md
 - block-records/批次4-告警增强与任务看护.md
 - block-records/批次5-横切治理与毫秒化.md
+- block-records/批次6-样例交付化.md
 
 ### 踩坑记录
 - pitfalls/mockito-nested-stubbing.md
