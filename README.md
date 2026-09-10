@@ -1,10 +1,37 @@
-# reason-faster 个人开发框架
+# 升降杆样例 × reason-faster 基础框架
 
-基于开源项目 renren-security（MIT License）深度改造的**个人 Java 后端快速开发框架**（Spring Boot 3 现代化版）。
+> **是什么**：一个面向**物联网设备接入**的端到端样例工程——50 台虚拟升降杆（独立模拟器进程）接入平台，覆盖
+> per-device HMAC 设备认证、可靠事件通道（RocketMQ 默认 + HTTP 降级三态）、指令闭环状态机（seq 幂等 + QUERY_STATE 对账）、
+> 告警全生命周期（去重/限速/合并/自动恢复）、traceId 全链路可观测、Quartz 集群双实例实证、50 台量级回归与红队式安全治理。
+> 底层是 **reason-faster 基础框架**（renren-security MIT 深度改造：JDK 17 + Spring Boot 3.2 + Spring Security 6 + MyBatis-Plus + Quartz 集群）。
 
-> 原始项目：renren-security（RBAC 权限 + Quartz 调度 + Redis 缓存 + 操作日志），遵循 MIT 协议保留原版权声明；
-> 已按个人需求完成现代化改造：**JDK 17 + Spring Boot 3.2 + jakarta + MyBatis-Plus 3.5 + Spring Security 6 + Knife4j 4 + fastjson2**，
-> 并完成安全升级：密码哈希 SHA-256 → BCrypt（渐进迁移）、token 生成 MD5 → SecureRandom、Quartz 迁移 spring-boot-starter-quartz（配置 yml 化）。
+## 文档导航（按阅读顺序）
+
+| # | 文档 | 一句话 |
+|---|---|---|
+| 1 | [运行与演示手册](document/升降杆样例-运行与演示手册.md) | 怎么跑、怎么演示（含剧本命令与踩坑前置） |
+| 2 | [架构图集](document/升降杆样例-架构图集.md) | 六张图看懂拓扑/指令闭环/双通道/告警/状态机/事故定位 |
+| 3 | [设备协议 v2](contracts/PROTOCOL-V2.md) | 双端契约（语义层+传输层一次定稿） |
+| 4 | [红队评估与成长路线](document/plans/升降杆样例-红队评估与成长升级路线.md) | T1-T20 问题谱 × 修复史 × 全阶段落地标注 |
+| 5 | [终稿规格](document/plans/升降杆样例-终稿规格.md) | 五批次执行序与全局 DoD |
+| 6 | [块记录](document/block-records/) | 每批次"做了什么/取舍/验证"+证据索引 |
+| 7 | [验证剧本](scripts/verify/README.md) | 批次2-5 剧本与运行证据（可复跑） |
+| 8 | [云服务器部署手册](document/deploy/云服务器部署手册.md) | 单机六进程全量复现（含验收清单） |
+
+## 样例能力速览
+
+| 能力 | 关键点 | 落档 |
+|---|---|---|
+| 设备认证 | per-device 32hex 密钥 + HMAC（上行验签/下行签名双通道同权；secret 仓库零明文） | 红队 0.5 / S2-S3 |
+| 可靠事件 | MQ 单通道默认（单队列保序/幂等吸收/死信）+ HTTP 降级三态零代码切换 | 批次2-3 / 契约 §7 |
+| 指令闭环 | sim seq 幂等（执行/拒绝双线）+ bootId/eventSeq 序守卫 + 超时 QUERY_STATE 实况对账 | 0.1/0.6 / S6 |
+| 告警治理 | 去重(SETNX+DB 兜底) + 限速 + 批量离线合并 + 确认与自动恢复闭环 | 批次4 |
+| 可观测性 | traceId 全链路贯穿（HTTP+MQ property）+ 结构化日志 + 任务看护 + 第0档指标端点 | 批次1/4 |
+| 调度 | Quartz 集群双实例实证（互斥 + 故障接管，无补跑/无双跑） | 阶段1 |
+| 安全治理 | 配置安全（fail-fast/ENC/jasypt/CORS）+ 认证前置（双维度锁定）+ 上行入口令牌桶限流 | 批次5 S1-S9 |
+| 数据治理 | 时间戳毫秒化（破坏性变更含幂等迁移）+ 90 天表保留清理（双时域 cutoff） | 批次5 D-H/D-G |
+
+> 完整的问题发现与修复史（20 洞 + 批内缺陷）：见红队文档与 `document/{block-records,pitfalls,fixes,knowledge}/`。
 
 ## 技术栈
 
@@ -94,10 +121,13 @@ reason-faster
 
 ## 测试与 CI
 
-- **单元测试**：核心链路 119 用例（批次5 时点）——密码编解码（含 Shiro 位级兼容取证向量）、认证过滤器三态、token 服务全分支、登录防护（BCrypt 渐进升级/账号×IP 组合锁/伪造 XFF 被忽略）、设备域全链路
+- **单元测试**：119 用例（平台，批次5 时点）+ sim 独立测试——密码编解码（含 Shiro 位级兼容取证向量）、认证过滤器三态、token 服务全分支、登录防护（BCrypt 渐进升级/账号×IP 组合锁/伪造 XFF 被忽略）、设备域全链路
 - **集成测试**（`*IT`，仅 CI 执行）：Testcontainers 起真实 MySQL 8 + Redis，跑完整 HTTP 认证链路（401/登录/带 token 访问/伪造 token）
-- **CI**：GitHub Actions（`.github/workflows/ci.yml`），push/PR 触发 `mvn verify`（单测 + 集成测试）
+- **端到端剧本**：`scripts/verify/`（批次2-5，本地执行、证据落档——与 block-records 一一对应）
+- **CI**：GitHub Actions（`.github/workflows/ci.yml`）双 job——`build`（单测 + 集成测试，`-DexcludedGroups=mq`）+ `barrier-sim`（模拟器独立构建测试）；MQ 端到端降级声明见 block-records/阶段2-实施记录 §四
 
 ## 已知边界 / Roadmap
 
-见 `document/roadmap.md`（包含"后续再做"待办：腾讯云 COS 对象存储等）。
+- 边界（既定取舍）：多租户/账务（主线立项块）、前端（纯后端样例）、TLS（物理单机；公网暴露形态需反代+TLS——见部署手册）、多站点、设备数 >50、注册制动态令牌（留主线）
+- 告警触达（通知渠道）为产品边界决策项：当前闭环止于管理端列表
+- "后续再做"待办索引：见 `document/roadmap.md` 与 `document/roadmap/`
