@@ -6,6 +6,7 @@ import com.reason.modules.device.config.DeviceChannelAuthenticator;
 import com.reason.modules.device.config.DeviceChannelProperties;
 import com.reason.modules.device.form.DeviceEventForm;
 import com.reason.modules.device.service.DeviceEventService;
+import org.apache.rocketmq.client.apis.consumer.SimpleConsumer;
 import org.apache.rocketmq.client.apis.message.MessageId;
 import org.apache.rocketmq.client.apis.message.MessageView;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.RecoverableDataAccessException;
 import org.springframework.http.HttpStatus;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.ByteBuffer;
@@ -184,5 +186,28 @@ class DeviceEventMqConsumerTest {
         DeviceEventMqConsumer.Outcome outcome = consumer.process(message);
 
         assertThat(outcome).isEqualTo(DeviceEventMqConsumer.Outcome.RETRY);
+    }
+
+    @Test
+    @DisplayName("手动外力事件（commandSeq 空）：合法信封正常编排 ACK——canonical 空串分支")
+    void 手动外力事件_无指令序号() {
+        MessageView message = messageOf("BARRIER-E-01", 0, null, "boot-1", 43L, "BARRIER-E-01");
+
+        DeviceEventMqConsumer.Outcome outcome = consumer.process(message);
+
+        assertThat(outcome).isEqualTo(DeviceEventMqConsumer.Outcome.ACK);
+        verify(authenticator).authenticateEvent("BARRIER-E-01", 0, null, "boot-1", 43L, "fake-sign");
+        verify(deviceEventService).handleStateEvent(any());
+    }
+
+    @Test
+    @DisplayName("停机：stop 关闭 consumer（未启动线程场景 null 安全）")
+    void 停机_关闭consumer() throws Exception {
+        SimpleConsumer mockConsumer = mock(SimpleConsumer.class);
+        ReflectionTestUtils.setField(consumer, "consumer", mockConsumer);
+
+        consumer.stop();
+
+        verify(mockConsumer).close();
     }
 }
