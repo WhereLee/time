@@ -1,0 +1,10 @@
+﻿=== B4-S2a heartbeat legal load 40 rps (10 threads x 4 rps, 10 devices) ===
+plan: _b4_heartbeat_capacity.jmx | -Jthreads=10 -JdevicePool=10 -Jthread_rps_x100=400 -Jduration=60
+
+http POST: 2339 (bind samples excluded: 10) | wall 59.1s | 39.6 rps
+response: 200=2339
+latency ms: avg=4.9 p50=5 p95=7 p99=8 max=61
+
+READ: 4 rps per device stays under the 5 rps bucket => zero 429, zero 401. No throttle collateral on legal load.
+NOTE: first runs exposed a JMeter binding race (getThreadNum 0-based -> idx -1). See block record
+  "batch7" for the full troubleshooting chain (401-storm -> clamp collision -> probe -> floorMod fix).

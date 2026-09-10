@@ -15,8 +15,9 @@
 | 4 | [红队评估与成长路线](document/plans/升降杆样例-红队评估与成长升级路线.md) | T1-T20 问题谱 × 修复史 × 全阶段落地标注 |
 | 5 | [终稿规格](document/plans/升降杆样例-终稿规格.md) | 五批次执行序与全局 DoD |
 | 6 | [块记录](document/block-records/) | 每批次"做了什么/取舍/验证"+证据索引 |
-| 7 | [验证剧本](scripts/verify/README.md) | 批次2-5 剧本与运行证据（可复跑） |
+| 7 | [验证剧本](scripts/verify/README.md) | 批次2-7 剧本与运行证据（可复跑） |
 | 8 | [云服务器部署手册](document/deploy/云服务器部署手册.md) | 单机六进程全量复现（含验收清单） |
+| 9 | [容量画像与排障实录](document/knowledge/heartbeat-event-capacity-profile.md) | JMeter 实测：限流桶边界 / 80rps 画像 / JVM 采样 / 生命线隔离 |
 
 ## 样例能力速览
 
@@ -56,7 +57,7 @@ reason-faster
 ├── pom.xml              父 POM（聚合 reason-main）
 ├── db/  建库与增量 SQL（reason-faster.sql 基线；02-09 barrier 增量=文件名序即依赖序，幂等）
 ├── document/            文档体系：块记录/坑位/修复/知识点/roadmap/部署（一问题一文件）
-├── scripts/verify/      批次2-5 验证剧本与证据（与 block-records 一一对应）
+├── scripts/verify/      批次2-7 验证剧本与证据（与 block-records 一一对应）
 ├── reason-barrier-sim/  升降杆模拟器（独立模块不聚合父 pom；启动见 document/升降杆样例-运行与演示手册.md）
 └── reason-main
     └── src/main/java/com/reason
@@ -121,10 +122,10 @@ reason-faster
 
 ## 测试与 CI
 
-- **单元测试**：119 用例（平台，批次5 时点）+ sim 独立测试——密码编解码（含 Shiro 位级兼容取证向量）、认证过滤器三态、token 服务全分支、登录防护（BCrypt 渐进升级/账号×IP 组合锁/伪造 XFF 被忽略）、设备域全链路
+- **单元测试**：176 用例（平台，批次7 时点，全绿）+ sim 独立测试——密码编解码（含 Shiro 位级兼容取证向量）、认证过滤器三态、token 服务全分支、登录防护（BCrypt 渐进升级/账号×IP 组合锁/伪造 XFF 被忽略）、设备域全链路（指令下发/对账巡检/通道验签三类行覆盖 100%）
 - **集成测试**（`*IT`，仅 CI 执行）：Testcontainers 起真实 MySQL 8 + Redis，跑完整 HTTP 认证链路（401/登录/带 token 访问/伪造 token）
-- **端到端剧本**：`scripts/verify/`（批次2-5，本地执行、证据落档——与 block-records 一一对应）
-- **CI**：GitHub Actions（`.github/workflows/ci.yml`）双 job——`build`（单测 + 集成测试，`-DexcludedGroups=mq`）+ `barrier-sim`（模拟器独立构建测试）；MQ 端到端降级声明见 block-records/阶段2-实施记录 §四
+- **端到端剧本**：`scripts/verify/`（批次2-7，本地执行、证据落档——与 block-records 一一对应）；批7 引入 JMeter 压测剧本（限流桶边界 / 80rps 容量画像 / 事件洪水生命线隔离，见 knowledge/容量画像）
+- **CI**：GitHub Actions（`.github/workflows/ci.yml`）双 job——`build`（单测 + 集成测试，`-DexcludedGroups=mq`；输出 LINE 覆盖率摘要 + jacoco 报告 artifact + 双端 Spring Boot 版本一致性机检）+ `barrier-sim`（模拟器独立构建测试）；MQ 端到端降级声明见 block-records/阶段2-实施记录 §四
 
 ## 已知边界 / Roadmap
 

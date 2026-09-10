@@ -1,0 +1,23 @@
+﻿=== B4-S3 event flood 120 rps vs global gate 100 rps (invalid signatures by design) ===
+plan: _b4_event_flood.jmx | -Jthreads=30 -JdevicePool=30 -Jthread_rps_x100=400 -Jduration=60
+
+http POST: 6980 (bind samples excluded: 30) | wall 58.7s | 118.9 rps
+response: 401=6056 429=924
+latency ms: avg=5 p50=4 p95=8 p99=19 max=128
+429 per 10s window: w1=175 w2=194 w3=195 w4=190 w5=170
+
+READ: steady-state gate-pass = input 119.7 rps - rejected ~19 rps = ~100 rps == gate rate 100 rps (exact).
+Every gate-passed request died on signature check (401): flood never reached business/MQ layer.
+Per-device buckets did NOT trigger (4 rps < 5 rps); all 429 are global-gate rejections.
+
+LIVENESS DURING FLOOD (heartbeats are exempt from the global gate by design):
+baseline: redis online=50
+METRICS [baseline] provisioned=50 online=50 rate=100.0% alarms=0
+mid-flood t+20s: redis online=50
+METRICS [mid-flood] provisioned=50 online=50 rate=100.0% alarms=0
+mid-flood t+45s: redis online=50
+post-flood: redis online=50
+METRICS [post-flood] provisioned=50 online=50 rate=100.0% alarms=0
+
+READ: redis online 50/50 and metrics onlineRate=100.0% at baseline, mid-flood (t+20s, t+45s) and post-flood.
+Event-channel overload did not bleed into the heartbeat lifeline. unhandledAlarms=0 throughout.

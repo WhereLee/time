@@ -24,7 +24,7 @@
 等价手动命令（bin 目录下）：
 ```
 mqnamesrv.cmd
-mqbroker.cmd -n 127.0.0.1:9876
+mqbroker.cmd -n 127.0.0.1:9876 -c ..\conf\broker.conf
 mqproxy.cmd -pm cluster -n 127.0.0.1:9876 -pc ..\conf\proxy-dev.json
 ```
 
@@ -40,7 +40,10 @@ mqproxy.cmd -pm cluster -n 127.0.0.1:9876 -pc ..\conf\proxy-dev.json
    mqadmin.cmd updateTopic -n 127.0.0.1:9876 -t device-event -c DefaultCluster -w 1 -r 1
    ```
    单读写队列（-w 1 -r 1）= D5 全局有序前提。**已建**（topicRoute 实测 readQueueNums=1/writeQueueNums=1）。
-4. **broker 注册地址是局域网 IP**（实测 192.168.11.61:10911）：producer 经 proxy 转发时连该地址——同网段可用；**换网络后 broker 注册地址失效**，建议 broker 启动加 `brokerIP1=127.0.0.1`（本地联调固定回环）。当前未加（剧本实测同网段通过），列为环境优化项。
+4. **broker 注册地址（已修复 2026-09-10）**：原注册为局域网 IP（随网络漂移，早期实测 192.168.11.61:10911，本次修复前实测 192.168.1.7:10911）——producer 经 proxy 转发时连该地址，**换网络即失效**。
+   修复时另发现：原启动命令未带 `-c`，**conf\broker.conf 从未被加载**（进程用代码默认值运行，brokerName=主机名），故一并修正——
+   现启动命令补 `-c ..\conf\broker.conf` 且文件内增加 `brokerIP1 = 127.0.0.1`。
+   生效验证（2026-09-10）：clusterList 注册地址 `127.0.0.1:10911`；brokerName 由主机名变为 `broker-a`（broker.conf 生效佐证）；重启后消费组 Diff=0、sendMessage 活链实测平台实时消费通过。
 
 ## 4. 消费组
 

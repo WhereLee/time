@@ -1,0 +1,15 @@
+﻿=== B4-S2b heartbeat legal load 80 rps (20 threads x 4 rps, 20 devices) + JVM sampling ===
+plan: _b4_heartbeat_capacity.jmx | -Jthreads=20 -JdevicePool=20 -Jthread_rps_x100=400 -Jduration=100
+
+http POST: 7840 (bind samples excluded: 20) | wall 98.7s | 79.4 rps
+response: 200=7840
+latency ms: avg=4.8 p50=4 p95=7 p99=10 max=115
+
+JVM (jstat -gc, 45s steady window @80rps): deltaYGC=8 deltaYGCT=0.009s deltaFGC=0
+  OU KB: min=59377 max=59604 avg=59545
+  EU KB: min=2048 max=102400
+  young GC pause avg=1.1 ms, GC time share=0.02% of wall
+threads state (jstack mid-load): WAITING (parking)=50 RUNNABLE=48 TIMED_WAITING (on object monitor)=28 TIMED_WAITING (parking)=24 TIMED_WAITING (sleeping)=5 WAITING (on object monitor)=1
+process CPU % (1s x 30): avg=24.6 max=74
+
+READ: zero errors at 80 rps; GC pause noise (<1.2 ms avg, 0 full GC, flat old gen) => plenty of headroom.

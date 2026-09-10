@@ -1,0 +1,9 @@
+﻿=== B4-S1 single-device over-rate: per-device token bucket boundary ===
+plan: _b4_heartbeat_capacity.jmx | -Jthreads=5 -JdevicePool=1 -Jthread_rps_x100=2000 -Jduration=20 (~100 rps aimed at ONE device)
+
+http POST: 1782 (bind samples excluded: 5) | wall 19s | 93.8 rps
+response: 200=105 429=1677
+latency ms: avg=3.8 p50=3 p95=7 p99=10 max=36
+
+READ: accepted 200 ~= bucket rate 5rps x 20s + initial burst 10 ~= 105-110 => excess rejected with 429.
+The steady acceptance at exactly the bucket rate proves per-device throttling works under 20x over-rate.
