@@ -1,0 +1,21 @@
+﻿=== batch3 verdict 2026-09-10 16:17:22 ===
+1) ledger-vs-sim: total=50 mismatch=0 (expect 0 mismatch)
+   sample BARRIER-B-42: ledger=2 sim=2
+   sample BARRIER-B-40: ledger=2 sim=2
+   sample BARRIER-B-47: ledger=2 sim=2
+   sample BARRIER-B-05: ledger=2 sim=2
+   sample BARRIER-B-44: ledger=2 sim=2
+2) PENDING flows=0 (expect 0)
+3) unhandled alarms=0 (expect 0)
+   alarm(type handled count): 2	1	50
+   alarm(type handled count): 3	1	50
+   job: 201	0	0
+   job: 200	0	0
+   job: 201	0	0
+   job: 201	0	0
+   job: 200	0	0
+   job: 201	0	0
+5) dual-path trace pairing (HTTP entry vs MQ consume vs seq guard):
+   trace=a46f6300f07bf4885b8ca4d55e9070e1 httpEntry=0 mqConsume=0 guardOrCorrection=0
+   trace=1899123d4d81730e8ce89530ccc5e35e httpEntry=0 mqConsume=0 guardOrCorrection=0
+   trace=2b220ddd74435c180002cd5a45524ad9 httpEntry=0 mqConsume=0 guardOrCorrection=0

@@ -1,0 +1,19 @@
+﻿=== P4 reconcile escalation replay 17:37:33 ===
+tamper BARRIER-B-03 -> DOWN: code=0
+BARRIER-B-03 ledger state=2 (expect 2 DOWN) dbMaxSeq=11
+redis seq rollback to 6 at 17:37:39 (expect 6; next 5 rounds collide)
+baseline: type9 for BARRIER-B-03 = 0
+  t=30s: failStreak=1 unhandledT9=0 handledT9=0 state=2
+  t=60s: failStreak=1 unhandledT9=0 handledT9=0 state=2
+  t=90s: failStreak=2 unhandledT9=0 handledT9=0 state=2
+  t=120s: failStreak=2 unhandledT9=0 handledT9=0 state=2
+  t=150s: failStreak=3 unhandledT9=0 handledT9=0 state=2
+  t=180s: failStreak=3 unhandledT9=0 handledT9=0 state=2
+  t=210s: failStreak=4 unhandledT9=0 handledT9=0 state=2
+  t=240s: failStreak=4 unhandledT9=0 handledT9=0 state=2
+  t=270s: failStreak=5 unhandledT9=1 handledT9=0 state=2
+  t=300s: failStreak=5 unhandledT9=1 handledT9=0 state=2
+  t=330s: failStreak= unhandledT9=0 handledT9=1 state=1
+P4 verdict: escalated=True closed=True streakCleared=True state=1 (expect 1 UP) pending=0 (expect 0)
+  last flow: 12	1 (expect ARRIVED=1)
+=== P4 done 17:43:10 ===

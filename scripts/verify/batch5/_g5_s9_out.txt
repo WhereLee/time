@@ -1,0 +1,20 @@
+﻿temp instance pid=20828 (dev :8299, allowed-origins=[http://localhost:9527])
+PASS: temp instance boots (health UP on 8299)
+A) reg  GET /api/sys/init -> status=200 ACAO=http://localhost:9527 ACAC=true
+PASS: registered origin gets ACAO on real request
+PASS: registered origin gets ACAC=true
+B) evil GET /api/sys/init -> status=403 ACAO=
+PASS: evil origin denied (403 or no ACAO)
+C) reg  preflight -> status=200 ACAO=http://localhost:9527
+PASS: registered preflight allowed (200/204 + ACAO)
+D) evil preflight -> status=403 ACAO=
+PASS: evil preflight rejected (403, no ACAO)
+E) probe reg  GET /api/sys/menu/nav (needs token) -> status=401 ACAO=http://localhost:9527 [observation]
+F) probe evil GET /api/sys/menu/nav -> status=403 ACAO= [observation]
+PASS: evil origin never leaks ACAO on any path
+G) control main:8200 reg GET /api/sys/init -> status=403 ACAO=
+PASS: main instance (empty list) denies even registered origin
+H) control main:8200 evil preflight -> status=403 ACAO=
+PASS: main instance evil preflight rejected
+temp instance killed (main :8200 untouched)
+S9 RESULT: PASS

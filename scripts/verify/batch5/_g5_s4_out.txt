@@ -1,0 +1,12 @@
+PASS: admin login ok
+PASS: token issued
+sys_log count after login: 525
+GET list code=0
+sys_log count after 5x GET: 525
+PASS: GET requests did NOT grow sys_log (downgrade works)
+run job 203 code=0
+PASS: job 203 run accepted
+sys_log count after POST: 526
+PASS: POST write path still audited (+1)
+latest sys_log row: 瀹氭椂浠诲姟|/api/sys/schedule/run/203|1789042319
+S4 RESULT: PASS

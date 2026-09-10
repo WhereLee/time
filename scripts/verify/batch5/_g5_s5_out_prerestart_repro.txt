@@ -1,0 +1,15 @@
+nowMs=1789042324547 nowS=1789042324 oldMs=1780402324547 oldS=1780402324
+seeded: alarm=2 cmdlog=2 syslog=3
+PASS: admin login ok
+PASS: job 203 triggered
+poll tries=0 oldAlarmLeft=0
+PASS: old alarm (ms, 100d) deleted by ms cutoff
+FAIL: fresh alarm kept | fresh=2
+PASS: old command log (ms) deleted
+FAIL: fresh command log kept | fresh=2
+FAIL: old sys_log (seconds, 100d) deleted by seconds cutoff | old=1
+FAIL: fresh sys_log (seconds) kept -- would die if cutoff were milliseconds | fresh=0
+PASS: NULL-timestamp sys_log kept (comparison exempt)
+latest job203 log row: 203|0|1789042325
+cleanup done
+S5 RESULT: FAIL (4 check(s) failed)

@@ -1,0 +1,13 @@
+﻿=== time: 2026-09-10 16:04:33 tag=now ===
+--- ledger(device_state) ---
+2	50
+--- online keys(db15) ---
+50
+--- alarms unhandled (type:count) ---
+
+--- flows by command_status ---
+1	256
+--- job201 recent (id,state,duration) ---
+5073	0	0 | 5071	0	0 | 5070	0	0
+--- sim states ---
+DOWN=50

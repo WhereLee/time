@@ -1,0 +1,18 @@
+nowMs=1789042501892 nowS=1789042501 oldMs=1780402501892 oldS=1780402501
+seeded: alarm=2 cmdlog=2 syslog=3
+PASS: admin login ok
+PASS: job 203 triggered
+poll tries=0 oldAlarmLeft=0
+PASS: old alarm (ms, 100d) deleted by ms cutoff
+PASS: fresh alarm kept
+PASS: fresh alarm ts is ms domain (>1e11)
+PASS: old command log (ms) deleted
+PASS: fresh command log kept
+PASS: fresh command log ts is ms domain (>1e11)
+PASS: old sys_log (seconds, 100d) deleted by seconds cutoff
+PASS: fresh sys_log (seconds) kept -- would die if cutoff were milliseconds
+PASS: fresh sys_log ts stays seconds domain (<1e11)
+PASS: NULL-timestamp sys_log kept (comparison exempt)
+latest job203 log row: 203|0|1789042502
+cleanup done
+S5 RESULT: PASS

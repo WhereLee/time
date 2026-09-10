@@ -1,0 +1,13 @@
+﻿=== batch4 verdict 17:44:17 ===
+metrics endpoint: code=0 pending=0 online=50/52 rate=96.2% unhandled=427
+  task 200 state=0 lastOkAgoSec=17
+  task 201 state=0 lastOkAgoSec=17
+  task 202 state=0 lastOkAgoSec=7
+type7 total=1 handled=1 unhandled=0
+type8 total=1 handled=1 unhandled=0
+type9 total=1 handled=1 unhandled=0
+pendingFlows=0 (expect 0) online=50 (expect 50)
+B-series unhandled by type:
+reconcile-fail keys left: 0
+alarm-rate keys left: 1
+=== verdict done 17:44:17 ===

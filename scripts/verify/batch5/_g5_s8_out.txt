@@ -1,0 +1,24 @@
+started pid=39116 with NO profile
+exited=True exitCode= elapsedSec=8.1
+PASS: process exited (fail-fast, not hanging)
+PASS: startup failed (non-zero exit)
+PASS: failure marker present (datasource/failed-start/build-failure)
+PASS: fail-fast within 30s
+ROOT CAUSE: Caused by: java.lang.IllegalStateException: dbType not support : null, url null
+--- failure tail ---
+  ssEnhancer.java:348)
+  	at com.reason.datasource.config.DynamicDataSourceConfig$$SpringCGLIB$$0.dynamicDataSource(<generated>)
+  	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+  	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+  	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+  	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+  	at org.springframework.beans.factory.support.SimpleInstantiationStrategy.instantiate(SimpleInstantiationStrategy.java:146)
+  	... 108 common frames omitted
+  [ERROR] Failed to execute goal org.springframework.boot:spring-boot-maven-plugin:3.2.12:run (default-cli) on project reason-main: Process terminated with exit code: 1 -> [Help 1]
+  [ERROR] 
+  [ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+  [ERROR] Re-run Maven using the -X switch to enable full debug logging.
+  [ERROR] 
+  [ERROR] For more information about the errors and possible solutions, please read the following articles:
+  [ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException
+S8 RESULT: PASS

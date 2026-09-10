@@ -1,0 +1,16 @@
+attempt 1 (XFF=10.0.0.1): code=500
+attempt 2 (XFF=10.0.0.2): code=500
+attempt 3 (XFF=10.0.0.3): code=500
+attempt 4 (XFF=10.0.0.4): code=500
+attempt 5 (XFF=10.0.0.5): code=500
+attempt 6 (XFF=10.0.0.6): code=500
+PASS: lock key keyed by REAL ip (127.0.0.1) exists
+PASS: no lock key keyed by any forged XFF ip
+PASS: ip-dimension counter tracks real ip only (==5)
+PASS: no IP-dimension counter under any forged XFF ip
+PASS: lock message differs from normal failure (lock triggered on 5th)
+attempt1 msg hash: -1083043876 ; attempt5 msg hash: -862040941 ; attempt6 msg hash: -1105881893
+cleanup done; probe msg1 raw (utf8 in evidence): 账号或密码错误
+probe msg5 raw: 账号或密码连续错误5次，账号已限时锁定，5分钟后解锁
+probe msg6 raw: 账号已限时锁定，请稍后再尝试
+S2 RESULT: PASS

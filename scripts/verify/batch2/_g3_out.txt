@@ -1,0 +1,90 @@
+MAIN READY at 21:55:12
+=== G3-1 reorder ===
+network set: {"blockDownstream":false,"blockUpstream":false,"blockEvents":false,"dropNextEvent":false,"heartbeatDelayMillis":0,"reorderDeviceNo":null,"replayNextEvent":false,"eventDelayMillis":0} -> ç½ç»å§æ¬å·²è®¾ï¼ä¸è¡é»æ­=false äºä»¶ç¬ç«æ­=false ä¸è¡é»æ­=false ä¸¢ä¸ä¸æ¬¡äºä»¶=false å¿è·³å»¶è¿=0ms äºä»¶å»¶è¿=0ms éæ¾å¸é²=false ä¹±åºå¸é²=null
+network set: {"reorderDeviceNo":"BARRIER-B-01"} -> ç½ç»å§æ¬å·²è®¾ï¼ä¸è¡é»æ­=false äºä»¶ç¬ç«æ­=false ä¸è¡é»æ­=false ä¸¢ä¸ä¸æ¬¡äºä»¶=false å¿è·³å»¶è¿=0ms äºä»¶å»¶è¿=0ms éæ¾å¸é²=false ä¹±åºå¸é²=BARRIER-B-01
+OPEN sent=True
+===== G3-1 after OPEN (reorder consumed) =====
+command_id	command_action	command_seq	trigger_type	command_status	retry_count	ct
+288	OPEN	6	1	1	0	2026-09-09 21:55:14
+238	CLOSE	5	1	1	0	2026-09-09 21:49:48
+188	OPEN	4	1	1	0	2026-09-09 21:49:30
+138	CLOSE	3	1	1	0	2026-09-09 21:49:19
+88	OPEN	2	1	1	0	2026-09-09 21:45:51
+38	OPEN	1	2	1	0	2026-09-09 10:04:00
+device_state	device_last_boot_id	device_last_event_seq
+1	9a347ef2736c4501aa107ba7991ec8bb	10
+open alarms 01: COUNT(*),0
+CLOSE sent=True
+===== G3-1 after CLOSE (final) =====
+command_id	command_action	command_seq	trigger_type	command_status	retry_count	ct
+289	CLOSE	7	1	1	0	2026-09-09 21:55:24
+288	OPEN	6	1	1	0	2026-09-09 21:55:14
+238	CLOSE	5	1	1	0	2026-09-09 21:49:48
+188	OPEN	4	1	1	0	2026-09-09 21:49:30
+138	CLOSE	3	1	1	0	2026-09-09 21:49:19
+88	OPEN	2	1	1	0	2026-09-09 21:45:51
+device_state	device_last_boot_id	device_last_event_seq
+2	9a347ef2736c4501aa107ba7991ec8bb	12
+open alarms 01: COUNT(*),0
+
+=== G3-2 replay ===
+network set: {"blockDownstream":false,"blockUpstream":false,"blockEvents":false,"dropNextEvent":false,"heartbeatDelayMillis":0,"reorderDeviceNo":null,"replayNextEvent":false,"eventDelayMillis":0} -> ç½ç»å§æ¬å·²è®¾ï¼ä¸è¡é»æ­=false äºä»¶ç¬ç«æ­=false ä¸è¡é»æ­=false ä¸¢ä¸ä¸æ¬¡äºä»¶=false å¿è·³å»¶è¿=0ms äºä»¶å»¶è¿=0ms éæ¾å¸é²=false ä¹±åºå¸é²=null
+network set: {"replayNextEvent":true} -> ç½ç»å§æ¬å·²è®¾ï¼ä¸è¡é»æ­=false äºä»¶ç¬ç«æ­=false ä¸è¡é»æ­=false ä¸¢ä¸ä¸æ¬¡äºä»¶=false å¿è·³å»¶è¿=0ms äºä»¶å»¶è¿=0ms éæ¾å¸é²=true ä¹±åºå¸é²=null
+OPEN sent=True
+===== G3-2 after OPEN (replay consumed) =====
+command_id	command_action	command_seq	trigger_type	command_status	retry_count	ct
+290	OPEN	8	1	1	0	2026-09-09 21:55:36
+289	CLOSE	7	1	1	0	2026-09-09 21:55:24
+288	OPEN	6	1	1	0	2026-09-09 21:55:14
+238	CLOSE	5	1	1	0	2026-09-09 21:49:48
+188	OPEN	4	1	1	0	2026-09-09 21:49:30
+138	CLOSE	3	1	1	0	2026-09-09 21:49:19
+device_state	device_last_boot_id	device_last_event_seq
+1	9a347ef2736c4501aa107ba7991ec8bb	14
+open alarms 01: COUNT(*),0
+CLOSE sent=True
+===== G3-2 after CLOSE (back to DOWN) =====
+command_id	command_action	command_seq	trigger_type	command_status	retry_count	ct
+291	CLOSE	9	1	1	0	2026-09-09 21:55:47
+290	OPEN	8	1	1	0	2026-09-09 21:55:36
+289	CLOSE	7	1	1	0	2026-09-09 21:55:24
+288	OPEN	6	1	1	0	2026-09-09 21:55:14
+238	CLOSE	5	1	1	0	2026-09-09 21:49:48
+188	OPEN	4	1	1	0	2026-09-09 21:49:30
+device_state	device_last_boot_id	device_last_event_seq
+2	9a347ef2736c4501aa107ba7991ec8bb	16
+open alarms 01: COUNT(*),0
+
+=== G3-3 delay 2000 (<grace) ===
+network set: {"blockDownstream":false,"blockUpstream":false,"blockEvents":false,"dropNextEvent":false,"heartbeatDelayMillis":0,"reorderDeviceNo":null,"replayNextEvent":false,"eventDelayMillis":0} -> ç½ç»å§æ¬å·²è®¾ï¼ä¸è¡é»æ­=false äºä»¶ç¬ç«æ­=false ä¸è¡é»æ­=false ä¸¢ä¸ä¸æ¬¡äºä»¶=false å¿è·³å»¶è¿=0ms äºä»¶å»¶è¿=0ms éæ¾å¸é²=false ä¹±åºå¸é²=null
+network set: {"eventDelayMillis":2000} -> ç½ç»å§æ¬å·²è®¾ï¼ä¸è¡é»æ­=false äºä»¶ç¬ç«æ­=false ä¸è¡é»æ­=false ä¸¢ä¸ä¸æ¬¡äºä»¶=false å¿è·³å»¶è¿=0ms äºä»¶å»¶è¿=2000ms éæ¾å¸é²=false ä¹±åºå¸é²=null
+OPEN sent=True
+===== G3-3a after OPEN delay=2000 =====
+command_id	command_action	command_seq	trigger_type	command_status	retry_count	ct
+292	OPEN	10	1	1	0	2026-09-09 21:55:59
+291	CLOSE	9	1	1	0	2026-09-09 21:55:47
+290	OPEN	8	1	1	0	2026-09-09 21:55:36
+289	CLOSE	7	1	1	0	2026-09-09 21:55:24
+288	OPEN	6	1	1	0	2026-09-09 21:55:14
+238	CLOSE	5	1	1	0	2026-09-09 21:49:48
+device_state	device_last_boot_id	device_last_event_seq
+1	9a347ef2736c4501aa107ba7991ec8bb	18
+open alarms 01: COUNT(*),0
+
+=== G3-3 delay 5000 (>grace) ===
+network set: {"eventDelayMillis":5000} -> ç½ç»å§æ¬å·²è®¾ï¼ä¸è¡é»æ­=false äºä»¶ç¬ç«æ­=false ä¸è¡é»æ­=false ä¸¢ä¸ä¸æ¬¡äºä»¶=false å¿è·³å»¶è¿=0ms äºä»¶å»¶è¿=5000ms éæ¾å¸é²=false ä¹±åºå¸é²=null
+CLOSE sent=True
+===== G3-3b after CLOSE delay=5000 =====
+command_id	command_action	command_seq	trigger_type	command_status	retry_count	ct
+293	CLOSE	11	1	1	0	2026-09-09 21:56:15
+292	OPEN	10	1	1	0	2026-09-09 21:55:59
+291	CLOSE	9	1	1	0	2026-09-09 21:55:47
+290	OPEN	8	1	1	0	2026-09-09 21:55:36
+289	CLOSE	7	1	1	0	2026-09-09 21:55:24
+288	OPEN	6	1	1	0	2026-09-09 21:55:14
+device_state	device_last_boot_id	device_last_event_seq
+2	9a347ef2736c4501aa107ba7991ec8bb	20
+open alarms 01: COUNT(*),0
+
+network set: {"blockDownstream":false,"blockUpstream":false,"blockEvents":false,"dropNextEvent":false,"heartbeatDelayMillis":0,"reorderDeviceNo":null,"replayNextEvent":false,"eventDelayMillis":0} -> ç½ç»å§æ¬å·²è®¾ï¼ä¸è¡é»æ­=false äºä»¶ç¬ç«æ­=false ä¸è¡é»æ­=false ä¸¢ä¸ä¸æ¬¡äºä»¶=false å¿è·³å»¶è¿=0ms äºä»¶å»¶è¿=0ms éæ¾å¸é²=false ä¹±åºå¸é²=null
+DONE at 21:56:35

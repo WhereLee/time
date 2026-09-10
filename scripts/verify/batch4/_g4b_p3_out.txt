@@ -1,0 +1,16 @@
+﻿=== P3 task watchdog drift 17:17:01 ===
+baseline: type8(JOB_STALLED)=0
+pause job200 via API: code=0
+drift injected: quartz trigger PAUSED but schedule_job.state forced 0 (enabled-but-not-running) at 17:17:02
+  t=30s: unhandledT8=0 job200LastOkAgoSec=32
+  t=60s: unhandledT8=0 job200LastOkAgoSec=62
+  t=90s: unhandledT8=0 job200LastOkAgoSec=92
+  t=120s: unhandledT8=0 job200LastOkAgoSec=122
+  t=150s: unhandledT8=1 job200LastOkAgoSec=152
+watchdog raised: True
+resume job200 via API: code=0 at 17:19:32
+  rec t=60s: unhandled=0 handledTotal=1 job200LastOkAgoSec=32
+  rec t=120s: unhandled=0 handledTotal=1 job200LastOkAgoSec=32
+  rec t=180s: unhandled=0 handledTotal=1 job200LastOkAgoSec=32
+P3 verdict: raised=1 (expect 1) unhandled=0 (expect 0) handled=1
+=== P3 done 17:22:33 ===

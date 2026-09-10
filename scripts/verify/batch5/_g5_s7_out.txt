@@ -1,0 +1,33 @@
+caseA started pid=13948 (port 8299, key=<env-injected>)
+PASS: caseA prod boots with ENC creds (health UP on 8299)
+caseA health body: {"status":"UP"}
+caseA /sys/init code=0
+PASS: caseA DB roundtrip via decrypted creds (/sys/init code=0)
+PASS: caseA no decryption error in log
+PASS: caseA log mentions port 8299
+caseA process killed
+caseB started pid=7836 (wrong key)
+PASS: caseB wrong key causes startup failure
+PASS: caseB failure is jasypt decryption related
+--- caseB log tail (decryption failure evidence) ---
+    [] o.apache.juli.logging.DirectJDKLog173 log - Stopping service [Tomcat]
+  2026-09-10 20:17:56.022 WARN  [] o.s.c.s.AbstractApplicationContext633 refresh - Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Unable to start web server
+  2026-09-10 20:17:56.032 INFO  [] o.s.b.a.l.ConditionEvaluationReportLogger82 logMessage - 
+  Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+  2026-09-10 20:17:56.046 ERROR [] o.s.b.d.LoggingFailureAnalysisReporter40 report - 
+  ***************************
+  APPLICATION FAILED TO START
+  ***************************
+  Description:
+  Failed to bind properties under 'spring.datasource.druid.password' to java.lang.String:
+      Reason: org.springframework.boot.context.properties.bind.BindException: Failed to bind properties under 'spring.datasource.druid.password' to java.lang.String
+  Action:
+  Update your application's configuration
+  [ERROR] Failed to execute goal org.springframework.boot:spring-boot-maven-plugin:3.2.12:run (default-cli) on project reason-main: Process terminated with exit code: 1 -> [Help 1]
+  [ERROR] 
+  [ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+  [ERROR] Re-run Maven using the -X switch to enable full debug logging.
+  [ERROR] 
+  [ERROR] For more information about the errors and possible solutions, please read the following articles:
+  [ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException
+S7 RESULT: PASS

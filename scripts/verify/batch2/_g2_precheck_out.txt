@@ -1,0 +1,11 @@
+=== precheck 21:43:35 ===
+--- platform consumer errors (last 300 lines of error.log, 21:4x) ---
+count=0
+--- device states ---
+2:50
+--- open alarms ---
+50
+--- online keys ---
+50
+--- GETDEL WARN after 21:40 ---
+count=0

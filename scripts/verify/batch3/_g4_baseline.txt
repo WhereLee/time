@@ -1,0 +1,13 @@
+﻿=== time: 2026-09-10 16:03:47 tag=baseline ===
+--- ledger(device_state) ---
+2	50
+--- online keys(db15) ---
+50
+--- alarms unhandled (type:count) ---
+
+--- flows by command_status ---
+1	256
+--- job201 recent (id,state,duration) ---
+5070	0	0 | 5068	0	0 | 5067	0	0
+--- sim states ---
+DOWN=50

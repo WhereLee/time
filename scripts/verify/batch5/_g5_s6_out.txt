@@ -1,0 +1,21 @@
+PASS: admin login ok
+open code=0 msg=操作成功
+PASS: open accepted
+open command row: 1|1789042509658|1789042512722
+PASS: open ARRIVED (status=1)
+PASS: command_createtime in ms domain (>1e12)
+PASS: command_updatetime in ms domain (>1e12)
+record after open: 1|1789042512713
+PASS: device state=1 (UP) after open
+PASS: device_updatetime in ms domain (>1e12)
+close code=0 msg=操作成功
+PASS: close accepted
+close command row: 1|1789042514024|1789042517062
+PASS: close ARRIVED (status=1)
+PASS: close command_createtime in ms domain
+record after close: 2|1789042517056
+PASS: device state=2 (DOWN) after close
+PASS: no reconcile/moving-stuck alarm flap during the loop
+latest sys_log log_createtime: 1789042514
+PASS: sys_log timestamp remains seconds (<1e10)
+S6 RESULT: PASS

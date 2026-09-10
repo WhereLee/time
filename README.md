@@ -29,6 +29,7 @@ reason-faster
 ├── pom.xml              父 POM（聚合 reason-main）
 ├── db/  建库与增量 SQL（reason-faster.sql 基线；02-09 barrier 增量=文件名序即依赖序，幂等）
 ├── document/            文档体系：块记录/坑位/修复/知识点/roadmap/部署（一问题一文件）
+├── scripts/verify/      批次2-5 验证剧本与证据（与 block-records 一一对应）
 ├── reason-barrier-sim/  升降杆模拟器（独立模块不聚合父 pom；启动见 document/升降杆样例-运行与演示手册.md）
 └── reason-main
     └── src/main/java/com/reason

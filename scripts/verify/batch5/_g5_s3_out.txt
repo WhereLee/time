@@ -1,0 +1,11 @@
+device state before flood: 2
+flood done: n=25 elapsedMs=150 401=10 429=15 other=0
+PASS: limiter rejected part of the burst (429 >= 5)
+PASS: pre-auth passes through to HMAC rejection (401 >= 5)
+PASS: no event slipped into business layer (other(=non 401/429) == 0)
+PASS: per-device bucket key exists in redis
+PASS: device state unchanged after forged burst
+PASS: secret loaded from batch-secrets file
+heartbeat after refill: code=0
+PASS: valid heartbeat accepted after bucket refill
+S3 RESULT: PASS

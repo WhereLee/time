@@ -1,0 +1,11 @@
+﻿=== P2 batch-offline merged alarm 17:11:41 ===
+baseline: B-series type2=50 type7(BATCH_OFFLINE)=0 online=50
+network: blockUpstream=true (all heartbeat upstream blocked) at 17:11:42
+  t=75s: type7 new=1 (expect 1) B-series type2 new=0 (expect 0!) unhandledBatch=1 online=0
+  batch row: __batch__	批量离线 52 台：BARRIER-E-01,BARRIER-W-02,BARRIER-B-01,BARRIER-B-02,BARRIER-B-03,BARRIER-B-04,BARRIER-B-05,BARRIER-B-06,BARRIER-B-07,BARRIER-B-08,BARRIER-B-09,BARRIER-B-10,BARRIER-B-11,BARRIER-B-12,BARRIER-B-13,BARRIER-B-14,BARRIER-B-15,BARRIER-B-16,BARRIER-B-17,BARRIER-B-18 等52台
+network: blockUpstream=false (restored) 17:12:57
+  rec t=30s: online=50 batchUnhandled=1
+  rec t=60s: online=50 batchUnhandled=0
+  rec t=90s: online=50 batchUnhandled=0
+P2 verdict: batchRows=1 (expect 1) batchHandled=1 (expect 1) online=50 (expect 50) B-seriesType2New=0 (expect 0)
+=== P2 done 17:14:27 ===

@@ -1,0 +1,41 @@
+whitelist entries found (13): /webjars/**, /doc.html, /swagger-ui/**, /v3/api-docs, /v3/api-docs/**, /sys/init, /sys/login, /device/event, /device/heartbeat, /actuator/health, /actuator/info, /captcha.jpg, /error
+PASS: whitelist parsed (>=10 entries)
+PASS: ghost-path not in whitelist: /druid/**
+PASS: ghost-path not in whitelist: /swagger-resources/**
+PASS: ghost-path not in whitelist: /v2/api-docs
+PASS: ghost-path not in whitelist: /sys/code
+PASS: ghost-path not in whitelist: /sys/auth
+PASS: ghost-path not in whitelist: /test/**
+PASS: ghost-path not in whitelist: /aaa.txt
+PASS: ghost-path not in whitelist: /app/**
+PASS: ghost-path not in whitelist: /etc/test/**
+PASS: whitelist keeps: /sys/login
+PASS: whitelist keeps: /sys/init
+PASS: whitelist keeps: /device/event
+PASS: whitelist keeps: /device/heartbeat
+PASS: whitelist keeps: /actuator/health
+PASS: whitelist keeps: /actuator/info
+PASS: whitelist keeps: /captcha.jpg
+PASS: no spring.profiles.active default
+PASS: application.yml cors allowed-origins empty default
+PASS: CorsConfig code uses allowedOrigins( only (comment lines stripped)
+PASS: CorsProperties default empty list
+PASS: prod username is ENC(...)
+PASS: prod password is ENC(...)
+PASS: prod has no plaintext root password
+PASS: no retired access-token in live resources (excl. prod-yml/comment doc)
+PASS: jasypt encryptor algorithm configured
+SKIP: /webjars/** (framework/pattern entry)
+SKIP: /doc.html (framework/pattern entry)
+SKIP: /swagger-ui/** (framework/pattern entry)
+SKIP: /v3/api-docs (framework/pattern entry)
+SKIP: /v3/api-docs/** (framework/pattern entry)
+PASS: whitelist entry maps to controller: /sys/init
+PASS: whitelist entry maps to controller: /sys/login
+PASS: whitelist entry maps to controller: /device/event
+PASS: whitelist entry maps to controller: /device/heartbeat
+SKIP: /actuator/health (framework/pattern entry)
+SKIP: /actuator/info (framework/pattern entry)
+PASS: whitelist entry maps to controller: /captcha.jpg
+SKIP: /error (framework/pattern entry)
+S1 RESULT: PASS
