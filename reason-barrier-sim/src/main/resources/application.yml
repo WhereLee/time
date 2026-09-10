@@ -19,8 +19,8 @@ sim:
   heartbeat-threads: 16
   # 升降动作耗时（毫秒）：模拟真实设备动作非瞬时
   move-millis: 3000
-  # 事件通道形态（批次3，D-A 三态路由）：mq=仅 MQ（终态）/ http=仅 HTTP（降级）/ dual=双写（对照期）
-  # 缺省=代码默认（对照期 dual；批次3 落档后切 mq）——剧本用启动参数 --sim.event-channel=xxx 覆盖
+  # 事件通道形态（批次3，D-A 三态路由）：mq=仅 MQ（终态）/ http=仅 HTTP（降级）/ dual=双写（对照）
+  # 缺省=代码默认 mq（终态，批次3 落档）——对照/注入剧本（需 HTTP 通道参与）用启动参数 --sim.event-channel=dual 覆盖
   # MQ 事件通道（阶段2 双写 → 批次3 三态路由；心跳不走 MQ——D3：判活不依赖 broker）
   mq:
     # MQ 通道启用开关（false=Bean 不创建，纯 HTTP 回滚形态；与 event-channel=mq 组合=启动失败——fail-fast）

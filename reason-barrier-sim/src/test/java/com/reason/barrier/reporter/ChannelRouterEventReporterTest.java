@@ -46,8 +46,16 @@ class ChannelRouterEventReporterTest {
     }
 
     @Test
-    @DisplayName("dual（对照期默认）：HTTP/MQ 双通道均投递，同一 traceId")
+    @DisplayName("默认取值：mq（批次3 落档终态——HTTP 退役为降级开关）")
+    void defaultChannelIsMq() {
+        assertThat(new SimProperties().getEventChannel()).isEqualTo("mq");
+    }
+
+    @Test
+    @DisplayName("dual（对照期）：HTTP/MQ 双通道均投递，同一 traceId")
     void dualReportsBothChannels() {
+        //批次3 落档后默认已是 mq——dual 为对照/注入剧本场景，显式指定
+        properties.setEventChannel("dual");
         //ifAvailable 语义：Bean 存在时执行 Consumer——stub 模拟（mq.enabled=true 场景；void 方法用 doAnswer）
         doAnswer(invocation -> {
             Consumer<MqEventReporter> consumer = invocation.getArgument(0);

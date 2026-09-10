@@ -95,11 +95,12 @@ public class SimProperties {
     private String secretFile = "";
 
     /**
-     * 事件通道形态（批次3，D-A 终态开关；只作用于事件通道——心跳恒 HTTP 不走 MQ，D3）：
-     * dual=双写（对照期默认，HTTP+MQ 并行）/ mq=仅 MQ（终态：HTTP 事件退役为降级开关）/
-     * http=仅 HTTP（降级回滚形态）。取值非法、或 mq 形态但 sim.mq.enabled=false——启动即失败（fail-fast）
+     * 事件通道形态（批次3 落档，D-A 终态开关；只作用于事件通道——心跳恒 HTTP 不走 MQ，D3）：
+     * mq=仅 MQ（终态默认，批次3 量下回归+dual 对照通过后切换：HTTP 事件通道退役为降级开关）/
+     * dual=双写（对照/排障期，注入器剧本需要 HTTP 通道参与时显式指定）/ http=仅 HTTP（降级回滚形态）。
+     * 取值非法、或 mq 形态但 sim.mq.enabled=false——启动即失败（fail-fast）
      */
-    private String eventChannel = "dual";
+    private String eventChannel = "mq";
 
     /**
      * MQ 事件通道（阶段2 双写 → 批次3 三态路由：是否投递 MQ 由 eventChannel 决定；
