@@ -13,11 +13,13 @@ import com.reason.modules.device.service.DeviceCommandLogService;
 import com.reason.modules.device.service.DeviceCommandService;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -54,10 +56,13 @@ public class DeviceCommandServiceImpl implements DeviceCommandService {
         this.recordDao = recordDao;
         this.channelProperties = channelProperties;
         this.commandLogService = commandLogService;
-        //通道级超时：设备在"十公里外"，网络不可靠——发指令不能无限等（指令超时是反馈闭环的前置）
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(2000);
-        factory.setReadTimeout(3000);
+        //通道级超时参数化（批次8：原硬编码 2s/3s）+ JDK HttpClient 连接复用（与心跳侧同款——
+        //原 SimpleClientHttpRequestFactory 每请求新建 TCP；设备在"十公里外"，超时按剧本可标定）
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(channelProperties.getConnectTimeoutMillis()))
+                .build();
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+        factory.setReadTimeout(Duration.ofMillis(channelProperties.getReadTimeoutMillis()));
         this.restTemplate = new RestTemplate(factory);
     }
 

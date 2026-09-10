@@ -23,6 +23,18 @@ public class DeviceChannelProperties {
     private String simBaseUrl;
 
     /**
+     * 下行指令连接超时毫秒（批次8：通道级超时参数化——设备在"十公里外"，
+     * 原硬编码 2000ms，现在可按注入器剧本/网络形态在 yml 标定）
+     */
+    private int connectTimeoutMillis = 2000;
+
+    /**
+     * 下行指令读超时毫秒（批次8：原硬编码 3000ms——发指令不能无限等，
+     * 超时是监控任务反馈闭环的前置）
+     */
+    private int readTimeoutMillis = 3000;
+
+    /**
      * MQ 事件消费配置（阶段2：事件走 RocketMQ 与 HTTP 双写并行——D6；
      * 心跳不走 MQ，留 HTTP 判活——D3）
      */
