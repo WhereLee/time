@@ -42,6 +42,15 @@ public final class BarrierRedisKeys {
      * 连续超阈值升级显式告警，补批次3 Redis 事故暴露的静默缺口） */
     public static final String RECONCILE_FAIL_PREFIX = "barrier:reconcile-fail:";
 
+    /** 设备代际历史（批次8 防跨代重放）：SET 成员=bootId——bootId 变化时仅"历史未见"的代际被接受；
+     * 进程启动 UUID 不复用，历史命中=旧代际事件重放（物理重放/重启后迟到重投），拒绝。
+     * 与 DB 序守卫互补：DB 守同代际乱序，本键守跨代际重放（DB 无代际历史，只有 last_boot_id） */
+    public static final String BOOT_HISTORY_PREFIX = "barrier:boot-history:";
+
+    /** 设备当前代际（批次8）：value=bootId——事件快路径比对（与当前代际一致=稳态零成本直通）；
+     * DB last_boot_id 仍是权威守卫，本键只做"是否换过代际/是否见过"的判定入口 */
+    public static final String BOOT_CURRENT_PREFIX = "barrier:boot-current:";
+
     private BarrierRedisKeys() {
     }
 }

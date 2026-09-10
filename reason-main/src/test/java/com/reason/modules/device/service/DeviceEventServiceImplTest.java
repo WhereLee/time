@@ -1,6 +1,7 @@
 package com.reason.modules.device.service;
 
 import com.reason.common.exception.RRException;
+import com.reason.modules.device.config.DeviceBootGenerationGuard;
 import com.reason.modules.device.enums.AlarmType;
 import com.reason.modules.device.form.DeviceEventForm;
 import org.junit.jupiter.api.DisplayName;
@@ -11,6 +12,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -33,6 +36,8 @@ class DeviceEventServiceImplTest {
     private DeviceCommandLogService commandLogService;
     @Mock
     private DeviceAlarmService deviceAlarmService;
+    @Mock
+    private DeviceBootGenerationGuard bootGenerationGuard;
     @InjectMocks
     private com.reason.modules.device.service.impl.DeviceEventServiceImpl eventService;
 
@@ -100,6 +105,30 @@ class DeviceEventServiceImplTest {
         verify(commandLogService).markExecFailedBySeq("BARRIER-E-01", 3);
         verify(commandLogService, never()).markExecFailed(anyString());
         verify(deviceAlarmService).raise(eq("BARRIER-E-01"), eq(AlarmType.DEVICE_FAULT), anyString());
+    }
+
+    @Test
+    @DisplayName("批次8 跨代重放：已见代际事件被拒——不更新台账、不销流水、不告警（重放不可换状态/销账）")
+    void 已见代际重放_拒绝() {
+        when(bootGenerationGuard.isReplay("BARRIER-E-01", "boot-old")).thenReturn(true);
+
+        eventService.handleStateEvent(event(1, 7L, "boot-old", 99));
+
+        verify(deviceRecordService, never())
+                .updateStateByEventWithSeq(anyString(), anyInt(), anyString(), anyLong());
+        verify(commandLogService, never()).markArrivedBySeq(anyString(), eq(0L), anyString());
+        verify(deviceAlarmService, never()).raise(anyString(), eq(AlarmType.DEVICE_FAULT), anyString());
+    }
+
+    @Test
+    @DisplayName("批次8 代际登记：台账接受后登记该代际（后续重放判定依据）")
+    void 接受后登记代际() {
+        when(bootGenerationGuard.isReplay("BARRIER-E-01", "boot-1")).thenReturn(false);
+        when(deviceRecordService.updateStateByEventWithSeq("BARRIER-E-01", 1, "boot-1", 7)).thenReturn(true);
+
+        eventService.handleStateEvent(event(1, 7L, "boot-1", 7));
+
+        verify(bootGenerationGuard).register("BARRIER-E-01", "boot-1");
     }
 
     @Test

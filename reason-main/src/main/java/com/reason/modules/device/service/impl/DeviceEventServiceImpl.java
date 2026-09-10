@@ -1,6 +1,7 @@
 package com.reason.modules.device.service.impl;
 
 import com.reason.common.exception.RRException;
+import com.reason.modules.device.config.DeviceBootGenerationGuard;
 import com.reason.modules.device.enums.AlarmType;
 import com.reason.modules.device.enums.DeviceState;
 import com.reason.modules.device.form.DeviceEventForm;
@@ -25,13 +26,16 @@ public class DeviceEventServiceImpl implements DeviceEventService {
     private final DeviceRecordService deviceRecordService;
     private final DeviceCommandLogService commandLogService;
     private final DeviceAlarmService deviceAlarmService;
+    private final DeviceBootGenerationGuard bootGenerationGuard;
 
     public DeviceEventServiceImpl(DeviceRecordService deviceRecordService,
                                   DeviceCommandLogService commandLogService,
-                                  DeviceAlarmService deviceAlarmService) {
+                                  DeviceAlarmService deviceAlarmService,
+                                  DeviceBootGenerationGuard bootGenerationGuard) {
         this.deviceRecordService = deviceRecordService;
         this.commandLogService = commandLogService;
         this.deviceAlarmService = deviceAlarmService;
+        this.bootGenerationGuard = bootGenerationGuard;
     }
 
     @Override
@@ -50,12 +54,22 @@ public class DeviceEventServiceImpl implements DeviceEventService {
         String deviceNo = form.getDeviceNo();
         Long commandSeq = form.getCommandSeq();
 
+        //0. 跨代际重放守卫（批次8）：序守卫对 bootId 变化一律接受，旧代际事件重放会借"新代际"通道
+        //过关——历史已见的代际在此拒绝（DB 序守卫仍守同代际乱序/重复，两层互补）
+        if (bootGenerationGuard.isReplay(deviceNo, form.getBootId())) {
+            log.warn("设备代际重放拒绝（已见代际事件重放，不推进台账/流水）deviceNo={} bootId={} eventSeq={} state={}",
+                    deviceNo, form.getBootId(), form.getEventSeq(), stateCode);
+            return;
+        }
+
         //1. 台账更新（协议 v2 序守卫：同代际旧序/重放 → false，幂等丢弃不推进流水）
         boolean accepted = deviceRecordService.updateStateByEventWithSeq(
                 deviceNo, stateCode, form.getBootId(), form.getEventSeq());
         if (!accepted) {
             return;
         }
+        //台账已接受：登记代际（新代际首次；同代际幂等 SET/SADD）——供后续重放判定
+        bootGenerationGuard.register(deviceNo, form.getBootId());
 
         //2. 按事件-动作映射推进流水（销账必须证据驱动：只有事件携带 commandSeq 才按 seq 精确销账）
         if (stateCode == DeviceState.UP.getCode()) {
