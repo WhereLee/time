@@ -33,6 +33,6 @@
 
 - 用户明确不采用（个人项目手写 CRUD 更快、模板风格易过时），如未来改变主意：参考 RuoYi generator 思路，输出 Spring Boot 3 + jakarta 风格代码
 
-## 6. Spring Security 学习路线（独立项目，不进本框架）
+## 6. Spring Security 学习路线（独立项目，不进本框架）——注：框架自身已迁移
 
-- 本框架保留 Shiro；Spring Security 6 作为独立学习项目实践（认证授权体系不同，避免混入导致维护成本翻倍）
+- 本条目为历史决策（2026-09-04 前）：原计划"框架保留 Shiro、Security 6 独立学习"；框架已于 2026-09-04 整体迁移 Security 6（见条目 3），本条目仅剩"独立项目实践"语境
