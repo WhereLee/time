@@ -18,6 +18,10 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
+    ignore:
+      # Spring Boot 4.x 属大版本跳跃（实测 barrier-sim CI 红，见 PR #1）；样例基线维持 3.2.x，major 升级需独立评估
+      - dependency-name: "org.springframework.boot:spring-boot-starter-parent"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
